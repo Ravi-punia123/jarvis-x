@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+memory.json
+jarvis_screen.png
+vision_test.py
+*.log

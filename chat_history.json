@@ -1,0 +1,84 @@
+{
+  "sessions": [
+    {
+      "id": 0,
+      "title": "Test Session 1",
+      "created": "2026-06-18T12:01:50.642664",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello",
+          "timestamp": "2026-06-18T12:01:50.642650",
+          "metadata": {}
+        },
+        {
+          "role": "assistant",
+          "content": "Hi",
+          "timestamp": "2026-06-18T12:01:50.642660",
+          "metadata": {}
+        }
+      ],
+      "pinned": false
+    },
+    {
+      "id": 1,
+      "title": "Test Session 1",
+      "created": "2026-06-18T12:02:00.368141",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello",
+          "timestamp": "2026-06-18T12:02:00.368122",
+          "metadata": {}
+        },
+        {
+          "role": "assistant",
+          "content": "Hi",
+          "timestamp": "2026-06-18T12:02:00.368136",
+          "metadata": {}
+        }
+      ],
+      "pinned": false
+    },
+    {
+      "id": 2,
+      "title": "Test Session 1",
+      "created": "2026-06-19T17:44:54.087303",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello",
+          "timestamp": "2026-06-19T17:44:54.087287",
+          "metadata": {}
+        },
+        {
+          "role": "assistant",
+          "content": "Hi",
+          "timestamp": "2026-06-19T17:44:54.087299",
+          "metadata": {}
+        }
+      ],
+      "pinned": false
+    },
+    {
+      "id": 3,
+      "title": "Test Session 1",
+      "created": "2026-06-19T17:46:21.007219",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello",
+          "timestamp": "2026-06-19T17:46:21.007204",
+          "metadata": {}
+        },
+        {
+          "role": "assistant",
+          "content": "Hi",
+          "timestamp": "2026-06-19T17:46:21.007215",
+          "metadata": {}
+        }
+      ],
+      "pinned": false
+    }
+  ]
+}
