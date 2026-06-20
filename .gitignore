@@ -1,7 +1,10 @@
-__pycache__/
-*.py[cod]
 .venv/
+__pycache__/
+*.pyc
 memory.json
+chat_history.json
 jarvis_screen.png
 vision_test.py
-*.log
+Demo/
+TestFolder/
+hello.txt

@@ -28,10 +28,10 @@ def test_imports():
         import ui_file_manager
         import ui_history
         from ui import JarvisApp
-        print("✓ All imports successful")
+        print("[OK] All imports successful")
         return True
     except Exception as e:
-        print(f"✗ Import failed: {e}")
+        print(f"[ERR] Import failed: {e}")
         import traceback
         traceback.print_exc()
         return False

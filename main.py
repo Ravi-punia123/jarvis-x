@@ -1,8 +1,68 @@
 """Entry point for the JARVIS desktop assistant."""
 
-from ui import JarvisApp
+import time
+import sys
+import subprocess
+from pathlib import Path
+from logger import get_logger
 
+def _check_and_heal_env(log) -> bool:
+    """Detect if python environment is missing required dependencies and attempt repair."""
+    req_file = Path(__file__).parent / "requirements.txt"
+    if not req_file.exists():
+        log.warning("requirements.txt not found. Skipping environment validation.")
+        return True
+
+    try:
+        with open(req_file, "r", encoding="utf-8") as f:
+            packages = [line.strip().split("==")[0] for line in f if line.strip() and not line.strip().startswith("#")]
+    except Exception as e:
+        log.error("Failed to read requirements.txt: %s", e)
+        return True
+
+    # Simple import check mapping
+    import_mapping = {
+        "SpeechRecognition": "speech_recognition",
+        "Pillow": "PIL",
+        "PyGetWindow": "pygetwindow",
+        "pytesseract": "pytesseract",
+    }
+
+    missing_packages = []
+    for pkg in packages:
+        module_name = import_mapping.get(pkg, pkg.lower().replace("-", "_"))
+        try:
+            __import__(module_name)
+        except ImportError:
+            log.warning("Required package '%s' (module '%s') is missing.", pkg, module_name)
+            missing_packages.append(pkg)
+
+    if missing_packages:
+        log.info("Attempting to auto-install missing packages: %s", missing_packages)
+        try:
+            # Try installing missing packages using current python interpreter
+            subprocess.run([sys.executable, "-m", "pip", "install", *missing_packages], check=True)
+            log.info("Auto-installation of packages completed successfully.")
+            return True
+        except Exception as e:
+            log.error("Failed to auto-repair virtual environment: %s", e)
+            return False
+    return True
 
 if __name__ == "__main__":
-    app = JarvisApp()
-    app.run()
+    t0 = time.perf_counter()
+    log = get_logger("main")
+    log.info("Starting JARVIS application startup checks")
+    
+    if not _check_and_heal_env(log):
+        log.critical("Environment verification failed. Please verify dependencies.")
+        
+    try:
+        from ui import JarvisApp
+        app = JarvisApp()
+        elapsed = time.perf_counter() - t0
+        log.info("JARVIS initialized successfully in %.3f seconds", elapsed)
+        app.run()
+    except Exception as e:
+        log.critical("Failed to launch JARVIS application: %s", e, exc_info=True)
+        sys.exit(1)

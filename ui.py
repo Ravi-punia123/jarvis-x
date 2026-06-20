@@ -3,10 +3,12 @@
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog
+from tkinter import simpledialog
 from datetime import datetime
 from typing import Optional
 import traceback
 import os
+import json
 from pathlib import Path
 
 from ai import OllamaAssistant
@@ -28,6 +30,9 @@ from ui_components import RoundedButton, LoadingIndicator, MessageBubble, Status
 from ui_file_manager import FileManager
 from ui_history import HistoryManager
 from input_router import InputRouter
+from settings_manager import SettingsManager
+from task_queue import TaskQueue
+from logger import get_logger
 
 try:
     from tkinterdnd2 import DND_FILES, DND_TEXT
@@ -51,10 +56,15 @@ class JarvisApp:
         self.memory = MemoryManager()
         self.planner = Planner()
         self.executor = Executor()
+        self.executor.autonomous_loop.planner = self.planner
         self.vision = VisionManager()
         self.speech = SpeechManager()
         self.file_manager = FileManager()
         self.history_manager = HistoryManager()
+        self.settings_manager = SettingsManager()
+        self.task_queue = TaskQueue()
+        self.task_queue.register_callback("ui", self._on_task_event)
+        self.log = get_logger("ui")
 
         # UI state
         self.status_var = tk.StringVar(value=STATUS_READY)
@@ -65,17 +75,44 @@ class JarvisApp:
         self._streaming = False
         self._assistant_buffer = ""
         self.cancel_requested = False
-        self.settings = {
-            "font_scale": 1.0,
-            "animations": True,
-            "vision_timeout": 600,
-            "auto_speak": False,
-        }
+        self.selected_session_id: Optional[int] = None
+        self.current_task_id: Optional[str] = None
+        self.execution_panel_expanded = True
+        self.settings = self.settings_manager.all()
+        self.ai.configure(
+            model_name=self.settings.get("llm_model"),
+            temperature=self.settings.get("temperature"),
+            context_length=self.settings.get("context_length"),
+        )
+        self.vision.set_model(self.settings.get("vision_model", "auto"))
+        self.vision.set_timeout(int(self.settings.get("timeout_seconds", 600)))
 
         # Build UI
         self._build_ui()
         self._bind_shortcuts()
         self.history_manager.new_session()
+        
+        # Async Ollama health check
+        threading.Thread(target=self._check_ollama_health, daemon=True).start()
+
+    def _on_task_event(self, event_name: str, payload: dict):
+        """Handle task queue events on the UI thread."""
+        def apply_event():
+            if event_name == "queued":
+                self.execution_var.set("Execution: queued")
+                self._update_execution_log(f"[queue] queued {payload.get('label', '')}")
+            elif event_name == "started":
+                self.execution_var.set("Execution: running")
+                self._update_execution_log(f"[queue] started {payload.get('label', '')}")
+            elif event_name == "completed":
+                self.execution_var.set("Execution: completed")
+            elif event_name == "failed":
+                self.execution_var.set("Execution: failed")
+                self._show_toast(f"Task failed: {payload.get('error', 'Unknown error')}", "error")
+            elif event_name == "cancelled":
+                self.execution_var.set("Execution: cancelled")
+
+        self.root.after(0, apply_event)
 
     def _bind_shortcuts(self):
         """Bind global keyboard shortcuts."""
@@ -421,15 +458,32 @@ class JarvisApp:
     def _build_execution_panel(self, parent):
         """Build a compact panel for pipeline/activity updates."""
         panel = tk.Frame(parent, bg=BG_SECONDARY)
+        header_row = tk.Frame(panel, bg=BG_SECONDARY)
+        header_row.pack(fill="x", padx=PADDING_NORMAL, pady=(PADDING_SMALL, 0))
+
         title = tk.Label(
-            panel,
+            header_row,
             text="Execution",
             bg=BG_SECONDARY,
             fg=TEXT_SECONDARY,
             font=FONT_SMALL,
             anchor="w",
         )
-        title.pack(fill="x", padx=PADDING_NORMAL, pady=(PADDING_SMALL, 0))
+        title.pack(side="left")
+
+        self.execution_toggle_btn = RoundedButton(
+            header_row,
+            text="Hide",
+            command=self._toggle_execution_panel,
+            width=70,
+            height=26,
+            bg=BG_TERTIARY,
+            hover_bg=BG_ACCENT,
+        )
+        self.execution_toggle_btn.pack(side="right")
+
+        self.execution_progress = ttk.Progressbar(panel, mode="determinate", maximum=100)
+        self.execution_progress.pack(fill="x", padx=PADDING_NORMAL, pady=(PADDING_SMALL, 0))
 
         self.execution_text = tk.Text(
             panel,
@@ -448,7 +502,37 @@ class JarvisApp:
         self.execution_text.insert("1.0", "Waiting for next request...")
         self.execution_text.config(state="disabled")
 
+        action_row = tk.Frame(panel, bg=BG_SECONDARY)
+        action_row.pack(fill="x", padx=PADDING_NORMAL, pady=(0, PADDING_SMALL))
+        RoundedButton(
+            action_row,
+            text="Cancel",
+            command=self._on_cancel_current,
+            width=90,
+            height=30,
+            bg=BG_TERTIARY,
+            hover_bg=STATUS_ERROR,
+        ).pack(side="left")
+        RoundedButton(
+            action_row,
+            text="Retry",
+            command=self._retry_last_task,
+            width=90,
+            height=30,
+            bg=BG_TERTIARY,
+            hover_bg=BG_ACCENT,
+        ).pack(side="left", padx=(PADDING_SMALL, 0))
+
         return panel
+
+    def _toggle_execution_panel(self):
+        self.execution_panel_expanded = not self.execution_panel_expanded
+        if self.execution_panel_expanded:
+            self.execution_text.pack(fill="x", padx=PADDING_NORMAL, pady=PADDING_SMALL)
+            self.execution_toggle_btn.configure(text="Hide")
+        else:
+            self.execution_text.pack_forget()
+            self.execution_toggle_btn.configure(text="Show")
 
     # =========================================================================
     # EVENT HANDLERS
@@ -484,6 +568,7 @@ class JarvisApp:
 
         display_text = text or "[Sent attachments]"
         self.memory.add_user_message(display_text)
+        self.history_manager.add_message("user", display_text)
         self._append_user_message(display_text)
         self.input_box.delete("1.0", "end")
         self.input_box.config(state="disabled")
@@ -492,11 +577,11 @@ class JarvisApp:
         self.is_generating = True
         self.status_var.set(STATUS_TYPING)
 
-        threading.Thread(
-            target=self._process_request,
-            args=(full_message,),
-            daemon=True,
-        ).start()
+        files_snapshot = [dict(item) for item in attached_files]
+        self.current_task_id = self.task_queue.submit(
+            "process_request",
+            lambda: self._process_request(full_message, files_snapshot),
+        )
 
     def _on_upload(self):
         """Open file dialog for upload."""
@@ -504,8 +589,8 @@ class JarvisApp:
             title="Add files",
             filetypes=[
                 ("Images", "*.png *.jpg *.jpeg *.gif *.webp"),
-                ("Documents", "*.pdf *.txt *.docx *.doc *.xlsx *.csv"),
-                ("Code", "*.py *.js *.ts *.java *.cpp"),
+                ("Documents", "*.pdf *.docx *.txt *.md *.csv *.xlsx"),
+                ("Code", "*.py *.js *.html *.css *.json"),
                 ("All", "*.*"),
             ],
         )
@@ -593,17 +678,44 @@ class JarvisApp:
             self.root.after(0, lambda: self.voice_btn.config(state="normal"))
             self.root.after(0, lambda: self.send_btn.config(state="normal"))
 
-    def _process_request(self, prompt: str):
+    def _process_request(self, prompt: str, attached_files=None):
         """Process user request in background thread."""
         try:
-            self.execution_var.set("Execution: planning")
-            self._update_execution_log("[planner] Building action plan")
+            self.log.info("processing request='%s'", prompt[:160])
+            attached_files = attached_files or []
+            self.planner.set_observer_state(self.executor.observer.get_latest_state())
+            self.root.after(0, lambda: self.execution_var.set("Execution: planning"))
+            self.root.after(0, lambda: self._update_execution_log("[planner] Building action plan"))
+
+            # Fast path: uploaded image analysis through vision model.
+            image_paths = [
+                f.get("path") for f in attached_files
+                if isinstance(f, dict) and f.get("type") == "image" and f.get("path")
+            ]
+            if image_paths:
+                self.root.after(0, lambda: self.execution_var.set("Execution: image analysis"))
+                self.root.after(0, lambda: self.inference_var.set("Inference: vision running"))
+                self.root.after(0, lambda: self._update_execution_log(f"[vision] analyzing {len(image_paths)} uploaded image(s)"))
+                summaries = []
+                for image_path in image_paths:
+                    result = self.vision.analyze_image(image_path, context="uploaded image")
+                    if result.get("success"):
+                        summaries.append(result.get("message", "{}"))
+                    else:
+                        summaries.append(f"Vision error: {result.get('error', 'unknown error')}")
+
+                combined = "\n\n".join(summaries)
+                self.root.after(0, lambda m=combined: self._append_assistant_message(m))
+                self.root.after(0, lambda m=combined: self.memory.add_assistant_message(m))
+                self.root.after(0, self._finish_request)
+                return
+
             plan = self.planner.plan(prompt)
 
             if isinstance(plan, dict) and plan.get("action") == "chat":
-                self.status_var.set(STATUS_THINKING)
-                self.execution_var.set("Execution: chat")
-                self._update_execution_log("[chat] Streaming model response")
+                self.root.after(0, lambda: self.status_var.set(STATUS_THINKING))
+                self.root.after(0, lambda: self.execution_var.set("Execution: chat"))
+                self.root.after(0, lambda: self._update_execution_log("[chat] Streaming model response"))
                 self._streaming = True
                 self.cancel_requested = False
                 try:
@@ -615,20 +727,34 @@ class JarvisApp:
                 except Exception as e:
                     self.root.after(
                         0,
-                        lambda: self._append_assistant_message(f"Error: {e}"),
+                        lambda: self._show_exception(e, "ai", "stream_response"),
                     )
                     self.root.after(0, self._finish_stream)
             else:
-                self.status_var.set("Executing...")
-                self.execution_var.set("Execution: tools")
-                self._update_execution_log("[executor] Running tool pipeline")
-                result = self.executor.execute(plan)
+                self.root.after(0, lambda: self.status_var.set("Executing..."))
+                self.root.after(0, lambda: self.execution_var.set("Execution: tools"))
+                self.root.after(0, lambda: self._update_execution_log("[executor] Running tool pipeline"))
+
+                result = None
+                for event in self.executor.stream_execute(plan):
+                    if not isinstance(event, dict):
+                        continue
+                    message = event.get("message", "")
+                    if message:
+                        self.root.after(0, lambda m=message: self._update_execution_log(m))
+                    if event.get("event") == "step_start":
+                        self.root.after(0, lambda s=event.get("step", 0): self.execution_var.set(f"Execution: step {s}"))
+                    if event.get("event") == "step_result":
+                        result = event.get("result")
+                if result is None:
+                    result = self.executor.execute(plan)
                 self.root.after(0, self._finish_tool, result)
         except Exception as e:
+            self.log.exception("request processing failed")
             traceback.print_exc()
             self.root.after(
                 0,
-                lambda: self._append_assistant_message(f"Error: {e}"),
+                lambda: self._show_exception(e, "ui", "_process_request"),
             )
             self.root.after(0, self._finish_request)
 
@@ -646,6 +772,7 @@ class JarvisApp:
     def _finish_stream(self):
         """Finish streaming response."""
         self.memory.add_assistant_message(self._assistant_buffer)
+        self.history_manager.add_message("assistant", self._assistant_buffer)
         if self.settings.get("auto_speak") and self._assistant_buffer.strip():
             threading.Thread(target=self.speech.speak, args=(self._assistant_buffer,), daemon=True).start()
         self._streaming = False
@@ -654,22 +781,42 @@ class JarvisApp:
 
     def _finish_tool(self, result):
         """Display tool execution result."""
+        if isinstance(result, dict) and isinstance(result.get("cycles"), list):
+            summary = []
+            for cycle in result["cycles"]:
+                marker = "✓" if cycle.get("verified") else "✗"
+                line = f"{marker} Cycle {cycle.get('cycle')}: verified={cycle.get('verified')}"
+                self._append_assistant_message(line)
+                summary.append(line)
+            final_msg = result.get("message", "Autonomous workflow complete.") if result.get("success") else result.get("error", "Autonomous workflow failed.")
+            self._append_assistant_message(final_msg)
+            summary.append(final_msg)
+            self.history_manager.add_message("assistant", "\n".join(summary))
+            self._update_execution_log(result.get("message") or result.get("error") or "Autonomous loop complete")
+            self._finish_request()
+            return
+
         if isinstance(result, dict) and isinstance(result.get("steps"), list):
             total = max(len(result["steps"]), 1)
+            summary = []
             for idx, step in enumerate(result["steps"], start=1):
                 symbol = "✓" if step.get("success") else "✗"
                 pct = int((idx / total) * 100)
                 msg = f"{symbol} [{pct}%] {step.get('message', 'Done')}"
                 self._append_assistant_message(msg)
+                summary.append(msg)
                 self._update_execution_log(msg)
+            self.history_manager.add_message("assistant", "\n".join(summary))
         else:
             message = (
                 result.get("message")
                 if isinstance(result, dict) and result.get("success")
                 else (result.get("error") if isinstance(result, dict) else str(result))
             )
-            self._append_assistant_message(message or "Done.")
-            self._update_execution_log(message or "Done.")
+            text_to_save = message or "Done."
+            self._append_assistant_message(text_to_save)
+            self.history_manager.add_message("assistant", text_to_save)
+            self._update_execution_log(text_to_save)
             if self.settings.get("auto_speak") and (message or "").strip():
                 threading.Thread(target=self.speech.speak, args=(message,), daemon=True).start()
         self._finish_request()
@@ -693,6 +840,32 @@ class JarvisApp:
         self.execution_text.insert("end", f"\n{line}")
         self.execution_text.see("end")
         self.execution_text.config(state="disabled")
+        if hasattr(self, "execution_progress"):
+            percent = 0
+            if "%" in line:
+                chunk = "".join(ch for ch in line if ch.isdigit())
+                if chunk:
+                    percent = min(100, max(0, int(chunk)))
+            elif line.lower().startswith("finished"):
+                percent = 100
+            if percent:
+                self.execution_progress["value"] = percent
+
+    def _show_toast(self, message: str, level: str = "info"):
+        """Show a short-lived toast notification."""
+        color = STATUS_SUCCESS if level == "success" else (STATUS_ERROR if level == "error" else BG_ACCENT)
+        toast = tk.Toplevel(self.root)
+        toast.overrideredirect(True)
+        toast.configure(bg=color)
+        toast.attributes("-topmost", True)
+
+        label = tk.Label(toast, text=message, bg=color, fg=TEXT_PRIMARY, font=FONT_SMALL, padx=12, pady=8)
+        label.pack()
+
+        x = self.root.winfo_rootx() + self.root.winfo_width() - 280
+        y = self.root.winfo_rooty() + 40
+        toast.geometry(f"260x40+{x}+{y}")
+        toast.after(2200, toast.destroy)
 
     def _refresh_attachments_ui(self):
         """Redraw attachment chips shown under input area."""
@@ -763,7 +936,7 @@ class JarvisApp:
         """Show settings dialog."""
         win = tk.Toplevel(self.root)
         win.title("Settings")
-        win.geometry("420x320")
+        win.geometry("560x620")
         win.configure(bg=BG_PRIMARY)
 
         tk.Label(win, text="JARVIS Settings", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_HEADING).pack(
@@ -773,13 +946,50 @@ class JarvisApp:
         font_scale_var = tk.DoubleVar(value=self.settings["font_scale"])
         auto_speak_var = tk.BooleanVar(value=self.settings["auto_speak"])
         animations_var = tk.BooleanVar(value=self.settings["animations"])
-        timeout_var = tk.IntVar(value=self.settings["vision_timeout"])
+        timeout_var = tk.IntVar(value=int(self.settings.get("timeout_seconds", 600)))
+        model_var = tk.StringVar(value=self.settings.get("llm_model", self.ai.model_name))
+        vision_model_var = tk.StringVar(value=self.settings.get("vision_model", "auto"))
+        temp_var = tk.DoubleVar(value=float(self.settings.get("temperature", 0.2)))
+        ctx_var = tk.IntVar(value=int(self.settings.get("context_length", 8192)))
+        ollama_url_var = tk.StringVar(value=self.settings.get("ollama_url", "http://localhost:11434"))
+        memory_recent_var = tk.IntVar(value=int(self.settings.get("memory_recent_limit", 40)))
+        memory_long_var = tk.IntVar(value=int(self.settings.get("memory_long_term_limit", 2000)))
+        voice_var = tk.BooleanVar(value=bool(self.settings.get("voice_enabled", True)))
+        mic_var = tk.StringVar(value=self.settings.get("microphone", "default"))
+        startup_last_var = tk.BooleanVar(value=bool(self.settings.get("startup_open_last_chat", True)))
 
         row1 = tk.Frame(win, bg=BG_PRIMARY)
         row1.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
         tk.Label(row1, text="Font scale", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
         tk.Scale(row1, from_=0.8, to=1.4, resolution=0.1, orient="horizontal", variable=font_scale_var,
                  bg=BG_PRIMARY, fg=TEXT_PRIMARY, highlightthickness=0, troughcolor=BG_TERTIARY).pack(side="right")
+
+        row_model = tk.Frame(win, bg=BG_PRIMARY)
+        row_model.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_model, text="LLM model", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Entry(row_model, textvariable=model_var, bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat").pack(side="right", fill="x", expand=True)
+
+        row_vmodel = tk.Frame(win, bg=BG_PRIMARY)
+        row_vmodel.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_vmodel, text="Vision model", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Entry(row_vmodel, textvariable=vision_model_var, bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat").pack(side="right", fill="x", expand=True)
+
+        row_temp = tk.Frame(win, bg=BG_PRIMARY)
+        row_temp.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_temp, text="Temperature", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Scale(row_temp, from_=0.0, to=1.0, resolution=0.05, orient="horizontal", variable=temp_var,
+             bg=BG_PRIMARY, fg=TEXT_PRIMARY, highlightthickness=0, troughcolor=BG_TERTIARY).pack(side="right")
+
+        row_ctx = tk.Frame(win, bg=BG_PRIMARY)
+        row_ctx.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_ctx, text="Context length", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Spinbox(row_ctx, from_=1024, to=65536, increment=512, textvariable=ctx_var,
+               bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat", buttonbackground=BG_ACCENT).pack(side="right")
+
+        row_ollama = tk.Frame(win, bg=BG_PRIMARY)
+        row_ollama.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_ollama, text="Ollama URL", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Entry(row_ollama, textvariable=ollama_url_var, bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat").pack(side="right", fill="x", expand=True)
 
         row2 = tk.Frame(win, bg=BG_PRIMARY)
         row2.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
@@ -795,16 +1005,69 @@ class JarvisApp:
 
         row4 = tk.Frame(win, bg=BG_PRIMARY)
         row4.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
-        tk.Label(row4, text="Vision timeout (sec)", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Label(row4, text="Timeout (sec)", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
         tk.Spinbox(row4, from_=60, to=1200, increment=30, textvariable=timeout_var,
                    bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat", buttonbackground=BG_ACCENT).pack(side="right")
+
+        row_mem = tk.Frame(win, bg=BG_PRIMARY)
+        row_mem.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_mem, text="Recent memory limit", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Spinbox(row_mem, from_=10, to=400, increment=10, textvariable=memory_recent_var,
+                   bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat", buttonbackground=BG_ACCENT).pack(side="right")
+
+        row_mem_long = tk.Frame(win, bg=BG_PRIMARY)
+        row_mem_long.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_mem_long, text="Long-term memory limit", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Spinbox(row_mem_long, from_=100, to=10000, increment=100, textvariable=memory_long_var,
+                   bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat", buttonbackground=BG_ACCENT).pack(side="right")
+
+        row_voice = tk.Frame(win, bg=BG_PRIMARY)
+        row_voice.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Checkbutton(row_voice, text="Enable voice", variable=voice_var,
+                       bg=BG_PRIMARY, fg=TEXT_PRIMARY, selectcolor=BG_TERTIARY,
+                       activebackground=BG_PRIMARY, activeforeground=TEXT_PRIMARY).pack(anchor="w")
+
+        row_mic = tk.Frame(win, bg=BG_PRIMARY)
+        row_mic.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Label(row_mic, text="Microphone", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_SMALL).pack(side="left")
+        tk.Entry(row_mic, textvariable=mic_var, bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat").pack(side="right", fill="x", expand=True)
+
+        row_start = tk.Frame(win, bg=BG_PRIMARY)
+        row_start.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        tk.Checkbutton(row_start, text="Open last chat on startup", variable=startup_last_var,
+                       bg=BG_PRIMARY, fg=TEXT_PRIMARY, selectcolor=BG_TERTIARY,
+                       activebackground=BG_PRIMARY, activeforeground=TEXT_PRIMARY).pack(anchor="w")
 
         def save_settings():
             self.settings["font_scale"] = float(font_scale_var.get())
             self.settings["animations"] = bool(animations_var.get())
             self.settings["auto_speak"] = bool(auto_speak_var.get())
-            self.settings["vision_timeout"] = int(timeout_var.get())
+            self.settings["timeout_seconds"] = int(timeout_var.get())
+            self.settings["llm_model"] = model_var.get().strip() or self.ai.model_name
+            self.settings["vision_model"] = vision_model_var.get().strip() or "auto"
+            self.settings["temperature"] = float(temp_var.get())
+            self.settings["context_length"] = int(ctx_var.get())
+            self.settings["ollama_url"] = ollama_url_var.get().strip() or "http://localhost:11434"
+            self.settings["memory_recent_limit"] = int(memory_recent_var.get())
+            self.settings["memory_long_term_limit"] = int(memory_long_var.get())
+            self.settings["voice_enabled"] = bool(voice_var.get())
+            self.settings["microphone"] = mic_var.get().strip() or "default"
+            self.settings["startup_open_last_chat"] = bool(startup_last_var.get())
+
+            self.settings_manager.update(self.settings)
+            self.settings_manager.save()
+
+            self.ai.configure(
+                model_name=self.settings.get("llm_model"),
+                temperature=self.settings.get("temperature"),
+                context_length=self.settings.get("context_length"),
+            )
+            self.vision.set_model(self.settings.get("vision_model", "auto"))
+            self.vision.set_timeout(int(self.settings.get("timeout_seconds", 600)))
+            self.model_status_var.set(f"Model: {self.ai.model_name}")
+
             self.status_var.set("Settings saved")
+            self._show_toast("Settings saved", "success")
             win.destroy()
 
         save_btn = RoundedButton(win, text="Save", command=save_settings, width=120, height=34, bg=BG_ACCENT)
@@ -834,12 +1097,40 @@ class JarvisApp:
         )
         memory_box.pack(fill="both", expand=True, padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
 
-        for item in self.memory.get_recent_history(limit=50):
-            role = item.get("role", "system")
-            content = item.get("content", "")
-            memory_box.insert("end", f"[{role}] {content}\n\n")
+        def refresh_memory_view(query: str = ""):
+            memory_box.config(state="normal")
+            memory_box.delete("1.0", "end")
+            if query.strip():
+                hits = self.memory.search_memory(query.strip(), limit=100)
+                for bucket, items in hits.items():
+                    memory_box.insert("end", f"[{bucket}]\n")
+                    for item in items:
+                        memory_box.insert("end", f"- {json.dumps(item, ensure_ascii=False)}\n")
+                    memory_box.insert("end", "\n")
+            else:
+                payload = self.memory.get_recent_history(limit=50)
+                for item in payload.get("messages", []):
+                    role = item.get("role", "system")
+                    content = item.get("content", "")
+                    memory_box.insert("end", f"[{role}] {content}\n\n")
+            memory_box.config(state="disabled")
+
+        refresh_memory_view()
 
         memory_box.config(state="disabled")
+
+        search_row = tk.Frame(win, bg=BG_PRIMARY)
+        search_row.pack(fill="x", padx=PADDING_MEDIUM, pady=(0, PADDING_SMALL))
+        query_var = tk.StringVar()
+        tk.Entry(search_row, textvariable=query_var, bg=BG_TERTIARY, fg=TEXT_PRIMARY, relief="flat").pack(side="left", fill="x", expand=True)
+        RoundedButton(
+            search_row,
+            text="Search",
+            command=lambda: refresh_memory_view(query_var.get()),
+            width=100,
+            height=32,
+            bg=BG_ACCENT,
+        ).pack(side="right", padx=(PADDING_SMALL, 0))
 
         button_row = tk.Frame(win, bg=BG_PRIMARY)
         button_row.pack(fill="x", padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
@@ -851,9 +1142,18 @@ class JarvisApp:
 
         def export_memory():
             self.status_var.set("Memory persisted to memory.json")
+            self._show_toast("Memory exported", "success")
+
+        def summarize_memory():
+            summary = self.memory.summarize_memory(max_items=12)
+            refresh_memory_view("")
+            memory_box.config(state="normal")
+            memory_box.insert("1.0", f"[summary]\n{summary}\n\n")
+            memory_box.config(state="disabled")
 
         RoundedButton(button_row, text="Clear Memory", command=clear_memory, width=140, height=34, bg=STATUS_ERROR).pack(side="left")
         RoundedButton(button_row, text="Export", command=export_memory, width=120, height=34, bg=BG_ACCENT).pack(side="left", padx=PADDING_SMALL)
+        RoundedButton(button_row, text="Summarize", command=summarize_memory, width=120, height=34, bg=BG_TERTIARY).pack(side="left", padx=PADDING_SMALL)
 
     def _clear_chat(self, event=None):
         """Clear current chat canvas quickly."""
@@ -866,6 +1166,8 @@ class JarvisApp:
         """Cancel current in-flight request from UI perspective."""
         if self.is_generating:
             self.cancel_requested = True
+            if self.current_task_id:
+                self.task_queue.cancel(self.current_task_id)
             self.is_generating = False
             self.status_var.set("Cancelled")
             self.execution_var.set("Execution: cancelled")
@@ -875,10 +1177,29 @@ class JarvisApp:
             return "break"
         return
 
+    def _retry_last_task(self):
+        """Retry the most recent queued task."""
+        task_id = self.task_queue.retry_latest()
+        if task_id:
+            self.current_task_id = task_id
+            self._show_toast("Retry submitted", "info")
+
     def _update_history_list(self):
         """Update the history list in sidebar."""
         for widget in self.history_list_frame.winfo_children():
             widget.destroy()
+
+        toolbar = tk.Frame(self.history_list_frame, bg=BG_SECONDARY)
+        toolbar.pack(fill="x", padx=PADDING_SMALL, pady=PADDING_SMALL)
+        tk.Button(
+            toolbar,
+            text="Import",
+            command=self._import_conversation,
+            bg=BG_TERTIARY,
+            fg=TEXT_PRIMARY,
+            relief="flat",
+            bd=0,
+        ).pack(side="left")
 
         sessions = self.history_manager.get_sessions()
         query = self.history_search_var.get().strip().lower() if hasattr(self, "history_search_var") else ""
@@ -888,8 +1209,11 @@ class JarvisApp:
             title = session["title"]
             if session.get("pinned"):
                 title = f"* {title}"
+            item_row = tk.Frame(self.history_list_frame, bg=BG_SECONDARY)
+            item_row.pack(fill="x", padx=PADDING_SMALL, pady=PADDING_SMALL)
+
             session_btn = tk.Button(
-                self.history_list_frame,
+                item_row,
                 text=title,
                 bg=BG_TERTIARY,
                 fg=TEXT_PRIMARY,
@@ -901,10 +1225,20 @@ class JarvisApp:
                 anchor="w",
                 command=lambda sid=session["id"]: self._load_session(sid),
             )
-            session_btn.pack(fill="x", padx=PADDING_SMALL, pady=PADDING_SMALL)
+            session_btn.pack(side="left", fill="x", expand=True)
+
+            tk.Button(item_row, text="Pin", command=lambda sid=session["id"]: self._pin_conversation(sid),
+                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
+            tk.Button(item_row, text="Ren", command=lambda sid=session["id"]: self._rename_conversation(sid),
+                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
+            tk.Button(item_row, text="Del", command=lambda sid=session["id"]: self._delete_conversation(sid),
+                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
+            tk.Button(item_row, text="Exp", command=lambda sid=session["id"]: self._export_conversation(sid),
+                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
 
     def _load_session(self, session_id: int):
         """Load a previous session."""
+        self.selected_session_id = session_id
         messages = self.history_manager.get_session(session_id)
         if messages:
             for widget in self.chat_frame.winfo_children():
@@ -914,6 +1248,44 @@ class JarvisApp:
                     self._append_user_message(msg["content"])
                 else:
                     self._append_assistant_message(msg["content"])
+
+    def _rename_conversation(self, session_id: int):
+        """Rename selected conversation."""
+        new_name = simpledialog.askstring("Rename", "New conversation title:")
+        if new_name:
+            self.history_manager.rename_session(session_id, new_name)
+            self._update_history_list()
+
+    def _delete_conversation(self, session_id: int):
+        """Delete selected conversation."""
+        self.history_manager.delete_session(session_id)
+        self._update_history_list()
+
+    def _pin_conversation(self, session_id: int):
+        """Pin/unpin selected conversation."""
+        self.history_manager.pin_session(session_id)
+        self._update_history_list()
+
+    def _export_conversation(self, session_id: int):
+        """Export selected conversation to JSON file."""
+        content = self.history_manager.export_session(session_id, format="json")
+        if not content:
+            return
+        file_path = filedialog.asksaveasfilename(
+            title="Export conversation",
+            defaultextension=".json",
+            filetypes=[("JSON", "*.json")],
+        )
+        if file_path:
+            Path(file_path).write_text(content, encoding="utf-8")
+            self._show_toast("Conversation exported", "success")
+
+    def _import_conversation(self):
+        """Import conversation from JSON file."""
+        file_path = filedialog.askopenfilename(title="Import conversation", filetypes=[("JSON", "*.json")])
+        if file_path and self.history_manager.import_session(file_path):
+            self._update_history_list()
+            self._show_toast("Conversation imported", "success")
 
     def current_session_has_messages(self) -> bool:
         """Check if current session has messages."""
@@ -990,6 +1362,41 @@ class JarvisApp:
             self._refresh_attachments_ui()
         except Exception as e:
             self.status_var.set(f"Drop error: {e}")
+
+    def _check_ollama_health(self):
+        """Perform background verification of Ollama server and configured model status."""
+        try:
+            self.status_var.set("Checking local AI services...")
+            if not self.ai.is_online():
+                self.status_var.set("⚠️ Ollama is offline")
+                self._update_execution_log("[health] Warning: Local Ollama server is offline.")
+                self.root.after(0, lambda: self._show_toast("Ollama is offline. Please make sure Ollama is running.", "error"))
+                return
+            
+            if not self.ai.check_model_available():
+                self.status_var.set(f"⚠️ Model '{self.ai.model_name}' missing")
+                self._update_execution_log(f"[health] Warning: Configured model '{self.ai.model_name}' not found.")
+                self.root.after(0, lambda: self._show_toast(f"Model '{self.ai.model_name}' not found. Please pull it.", "error"))
+                return
+            
+            self.status_var.set(STATUS_READY)
+            self._update_execution_log("[health] Ollama and model status OK")
+        except Exception as e:
+            self.status_var.set("Health check error")
+            self._update_execution_log(f"[health] Error: {e}")
+
+    def _show_exception(self, e: Exception, module: str, function: str):
+        """Log error traceback and append a formatted user-friendly message to assistant bubbles."""
+        tb = traceback.format_exc()
+        self.log.error("Exception in module=%s, function=%s: %s\n%s", module, function, str(e), tb)
+        error_msg = (
+            f"⚠️ **Error in JARVIS**\n\n"
+            f"- **Module**: `{module}`\n"
+            f"- **Function**: `{function}`\n"
+            f"- **Details**: {str(e)}\n\n"
+            f"**Traceback**:\n```\n{tb}```"
+        )
+        self.root.after(0, lambda: self._append_assistant_message(error_msg))
 
     # =========================================================================
     # APP LIFECYCLE

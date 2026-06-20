@@ -40,6 +40,17 @@ class VisionManager:
 
     def __init__(self):
         self.model_name = self._select_model()
+        self.timeout_seconds = 600
+
+    def set_timeout(self, timeout_seconds: int) -> None:
+        self.timeout_seconds = max(30, int(timeout_seconds))
+
+    def set_model(self, model_name: str) -> None:
+        candidate = (model_name or "").strip()
+        if candidate and candidate.lower() != "auto":
+            self.model_name = candidate
+        else:
+            self.model_name = self._select_model()
 
     def capture(self) -> Dict[str, Any]:
         """Capture a screenshot of the primary monitor."""
@@ -75,6 +86,10 @@ class VisionManager:
 
     def analyze(self, image_path: str) -> Dict[str, Any]:
         """Analyze screenshot with the local model and return structured data."""
+        return self.analyze_image(image_path, context="desktop screenshot")
+
+    def analyze_image(self, image_path: str, context: str = "uploaded image") -> Dict[str, Any]:
+        """Analyze an arbitrary image path using a vision-capable model."""
         print(f"Selected model: {self.model_name}", flush=True)
         resolved_image_path = str(Path(image_path).resolve())
         print(f"Image path: {resolved_image_path}", flush=True)
@@ -91,8 +106,9 @@ class VisionManager:
             }
 
         prompt = (
-            "Analyze this desktop screenshot and return strict JSON with keys: "
-            "windows, buttons, text. "
+            f"Analyze this {context} and return strict JSON with keys: "
+            "window_titles, buttons, text_regions, ui_elements, clickable_elements, code, diagrams, documents. "
+            "Every clickable or UI item should include bounding_box {left, top, width, height} when possible. "
             "Each key must map to a list. "
             "No markdown and no extra text."
         )
@@ -106,14 +122,14 @@ class VisionManager:
 
             inference_start = time.perf_counter()
             process.start()
-            process.join(timeout=600)
+            process.join(timeout=self.timeout_seconds)
 
             if process.is_alive():
                 process.terminate()
                 process.join()
                 return {
                     "success": False,
-                    "error": "Vision model timeout after 600 seconds",
+                    "error": f"Vision model timeout after {self.timeout_seconds} seconds",
                 }
 
             elapsed_inference = time.perf_counter() - inference_start
@@ -137,11 +153,27 @@ class VisionManager:
             content = response["message"]["content"].strip()
             parsed = self._parse_json(content)
 
+            ocr_text = self.extract_ocr_text(resolved_image_path)
+            if ocr_text:
+                parsed.setdefault("text_regions", [])
+                parsed["text_regions"].append({"text": ocr_text[:2000], "bounding_box": None})
+
+            ocr_regions = self.extract_ocr_regions(resolved_image_path)
+            if ocr_regions:
+                parsed.setdefault("text_regions", [])
+                parsed["text_regions"].extend(ocr_regions)
+
+            window_meta = self.extract_window_title()
+            if window_meta.get("success") and window_meta.get("title"):
+                parsed.setdefault("window_titles", [])
+                parsed["window_titles"].insert(0, {"title": window_meta["title"], "bounding_box": None})
+
             return {
                 "success": True,
                 "message": json.dumps(parsed, indent=2),
                 "data": parsed,
                 "elapsed_inference_seconds": elapsed_inference,
+                "model": self.model_name,
             }
         except Exception as exc:
             traceback.print_exc()
@@ -199,8 +231,89 @@ class VisionManager:
                     candidate = candidate[4:].strip()
 
         data = json.loads(candidate)
-        return {
-            "windows": data.get("windows", []) if isinstance(data, dict) else [],
-            "buttons": data.get("buttons", []) if isinstance(data, dict) else [],
-            "text": data.get("text", []) if isinstance(data, dict) else [],
+        if not isinstance(data, dict):
+            data = {}
+
+        window_titles = data.get("window_titles", data.get("windows", []))
+        text_regions = data.get("text_regions", data.get("text", []))
+        clickable_elements = data.get("clickable_elements", data.get("buttons", []))
+
+        normalized = {
+            "window_titles": window_titles if isinstance(window_titles, list) else [],
+            "buttons": data.get("buttons", []) if isinstance(data.get("buttons", []), list) else [],
+            "text_regions": text_regions if isinstance(text_regions, list) else [],
+            "ui_elements": data.get("ui_elements", []) if isinstance(data.get("ui_elements", []), list) else [],
+            "clickable_elements": clickable_elements if isinstance(clickable_elements, list) else [],
+            "code": data.get("code", []) if isinstance(data.get("code", []), list) else [],
+            "diagrams": data.get("diagrams", []) if isinstance(data.get("diagrams", []), list) else [],
+            "documents": data.get("documents", []) if isinstance(data.get("documents", []), list) else [],
         }
+        normalized["windows"] = normalized["window_titles"]
+        normalized["text"] = normalized["text_regions"]
+        return normalized
+
+    def extract_ocr_text(self, image_path: str) -> str:
+        """Best-effort OCR extraction from image files."""
+        try:
+            import pytesseract
+            from PIL import Image
+
+            text = pytesseract.image_to_string(Image.open(image_path)).strip()
+            return text[:2000]
+        except Exception:
+            return ""
+
+    def extract_ocr_regions(self, image_path: str) -> list[Dict[str, Any]]:
+        """Best-effort OCR text regions with bounding boxes."""
+        try:
+            import pytesseract
+            from PIL import Image
+
+            data = pytesseract.image_to_data(Image.open(image_path), output_type=pytesseract.Output.DICT)
+            regions = []
+            for idx, text in enumerate(data.get("text", [])):
+                cleaned = str(text).strip()
+                conf = str(data.get("conf", ["-1"])[idx]).strip()
+                if not cleaned:
+                    continue
+                try:
+                    conf_value = float(conf)
+                except Exception:
+                    conf_value = -1.0
+                if conf_value < 30:
+                    continue
+
+                left = int(data.get("left", [0])[idx])
+                top = int(data.get("top", [0])[idx])
+                width = int(data.get("width", [0])[idx])
+                height = int(data.get("height", [0])[idx])
+                regions.append(
+                    {
+                        "text": cleaned,
+                        "confidence": conf_value,
+                        "bounding_box": {
+                            "left": left,
+                            "top": top,
+                            "width": width,
+                            "height": height,
+                        },
+                    }
+                )
+            return regions
+        except Exception:
+            return []
+
+    def extract_window_title(self) -> Dict[str, Any]:
+        """Best-effort active window title extraction."""
+        try:
+            from tools.computer import get_active_window
+
+            result = get_active_window()
+            if result.get("success"):
+                return {
+                    "success": True,
+                    "title": result.get("window", {}).get("title", ""),
+                }
+        except Exception:
+            pass
+        return {"success": False, "title": ""}

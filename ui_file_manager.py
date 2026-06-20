@@ -10,8 +10,21 @@ class FileManager:
     """Manages uploaded files, previews, and attachments."""
 
     SUPPORTED_IMAGES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
-    SUPPORTED_DOCS = {".pdf", ".txt", ".docx", ".doc", ".xlsx", ".xls", ".csv"}
-    SUPPORTED_CODE = {".py", ".js", ".ts", ".java", ".c", ".cpp", ".go", ".rb", ".rs"}
+    SUPPORTED_DOCS = {".pdf", ".txt", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".md"}
+    SUPPORTED_CODE = {
+        ".py",
+        ".js",
+        ".ts",
+        ".java",
+        ".c",
+        ".cpp",
+        ".go",
+        ".rb",
+        ".rs",
+        ".json",
+        ".html",
+        ".css",
+    }
 
     def __init__(self, max_file_size_mb=100):
         self.files: List[dict] = []

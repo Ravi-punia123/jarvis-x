@@ -238,6 +238,23 @@ class MessageBubble(tk.Frame):
         looks_like_table = "|" in text and "\n" in text
         if has_code_block or looks_like_table:
             content = text.replace("```", "")
+            if has_code_block:
+                copy_code_btn = tk.Button(
+                    bubble_frame,
+                    text="Copy Code",
+                    command=lambda t=content: self._copy_text(t),
+                    bg=bubble_bg,
+                    fg=TEXT_SECONDARY,
+                    activebackground=BG_ACCENT,
+                    activeforeground=TEXT_PRIMARY,
+                    relief="flat",
+                    bd=0,
+                    padx=8,
+                    pady=2,
+                    font=FONT_TINY,
+                )
+                copy_code_btn.pack(anchor="ne", padx=PADDING_SMALL, pady=(0, PADDING_SMALL))
+
             text_block = tk.Text(
                 bubble_frame,
                 bg=bubble_bg,
@@ -254,9 +271,10 @@ class MessageBubble(tk.Frame):
             text_block.config(state="disabled")
             text_block.pack(fill="both", expand=True)
         else:
+            rendered_text = self._render_markdown_like(text)
             text_label = tk.Label(
                 bubble_frame,
-                text=text,
+                text=rendered_text,
                 bg=bubble_bg,
                 fg=TEXT_PRIMARY,
                 font=FONT_BODY,
@@ -286,6 +304,18 @@ class MessageBubble(tk.Frame):
             self.update()
         except Exception:
             return
+
+    def _render_markdown_like(self, text: str) -> str:
+        """Small markdown-to-plain-text renderer for headings/lists/bold markers."""
+        lines = []
+        for line in str(text).splitlines():
+            cleaned = line
+            if cleaned.startswith("#"):
+                cleaned = cleaned.lstrip("#").strip().upper()
+            cleaned = cleaned.replace("**", "")
+            cleaned = cleaned.replace("__", "")
+            lines.append(cleaned)
+        return "\n".join(lines)
 
 
 class StatusIndicator(tk.Frame):

@@ -42,8 +42,9 @@ class HistoryManager:
         if not self.current_session:
             return
 
+        next_id = max([s.get("id", -1) for s in self.sessions], default=-1) + 1
         session = {
-            "id": len(self.sessions),
+            "id": next_id,
             "title": title,
             "created": datetime.now().isoformat(),
             "messages": self.current_session.copy(),
@@ -144,3 +145,26 @@ class HistoryManager:
             return "\n".join(lines)
         else:
             return json.dumps(session, indent=2)
+
+    def import_session(self, source_path: str) -> bool:
+        """Import a conversation from JSON export."""
+        try:
+            payload = json.loads(Path(source_path).read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                return False
+            if "messages" not in payload or not isinstance(payload["messages"], list):
+                return False
+
+            next_id = max([s.get("id", -1) for s in self.sessions], default=-1) + 1
+            imported = {
+                "id": next_id,
+                "title": str(payload.get("title", "Imported Chat")),
+                "created": datetime.now().isoformat(),
+                "messages": payload["messages"],
+                "pinned": False,
+            }
+            self.sessions.append(imported)
+            self._persist()
+            return True
+        except Exception:
+            return False
