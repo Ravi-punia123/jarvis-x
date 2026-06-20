@@ -38,15 +38,27 @@ def _check_and_heal_env(log) -> bool:
             missing_packages.append(pkg)
 
     if missing_packages:
-        log.info("Attempting to auto-install missing packages: %s", missing_packages)
-        try:
-            # Try installing missing packages using current python interpreter
-            subprocess.run([sys.executable, "-m", "pip", "install", *missing_packages], check=True)
-            log.info("Auto-installation of packages completed successfully.")
-            return True
-        except Exception as e:
-            log.error("Failed to auto-repair virtual environment: %s", e)
-            return False
+        log.info("Attempting to auto-install missing packages individually: %s", missing_packages)
+        all_success = True
+        for pkg in missing_packages:
+            try:
+                log.info("Installing package '%s'...", pkg)
+                # Try installing package using current python interpreter
+                subprocess.run([sys.executable, "-m", "pip", "install", pkg], check=True, capture_output=True, text=True)
+                log.info("Package '%s' installed successfully.", pkg)
+            except subprocess.CalledProcessError as e:
+                all_success = False
+                log.error("Failed to install '%s'. Error output:\n%s", pkg, e.stderr or e.stdout or str(e))
+                if pkg == "PyAudio":
+                    log.warning(
+                        "PyAudio installation failed. Voice Input will be disabled. "
+                        "To resolve this, please install Microsoft C++ Build Tools from "
+                        "https://visualstudio.microsoft.com/visual-cpp-build-tools/ and try again."
+                    )
+            except Exception as e:
+                all_success = False
+                log.error("Unexpected error during installation of '%s': %s", pkg, e)
+        return all_success
     return True
 
 if __name__ == "__main__":
