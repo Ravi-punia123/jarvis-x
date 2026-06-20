@@ -1,6 +1,7 @@
 """Modern AI desktop assistant UI - Main application window."""
 
 import threading
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog
 from tkinter import simpledialog
@@ -136,6 +137,19 @@ class JarvisApp:
         self.benchmarks = OSBenchmarkSuite()
         self.debugger = OSAutoDebugger()
         self.learning_engine = OSLearningEngine()
+
+        # JARVIS v4.0 Digital Chief of Staff Modules
+        from os_project_manager import OSProjectManager
+        from os_task_manager import OSTaskManager
+        from os_research_agent import OSResearchAgent
+        from os_automation_center import OSAutomationCenter
+        from os_security_center import OSSecurityCenter
+
+        self.project_manager = OSProjectManager()
+        self.task_manager = OSTaskManager()
+        self.research_agent = OSResearchAgent()
+        self.automation_center = OSAutomationCenter()
+        self.security_center = OSSecurityCenter()
 
         # Track startup metric benchmark
         self.benchmarks.record("startup_latency", time.time() - self.root.winfo_toplevel().tk.call("clock", "clicks"))
@@ -348,6 +362,17 @@ class JarvisApp:
             hover_bg=BG_ACCENT,
         )
         dev_dashboard_btn.pack(side="bottom", pady=(0, PADDING_SMALL), padx=PADDING_MEDIUM)
+
+        daily_dashboard_btn = RoundedButton(
+            sidebar,
+            text="📋 Daily Dashboard",
+            command=self._show_daily_dashboard,
+            width=SIDEBAR_WIDTH - 20,
+            height=BUTTON_HEIGHT,
+            bg=BG_TERTIARY,
+            hover_bg=BG_ACCENT,
+        )
+        daily_dashboard_btn.pack(side="bottom", pady=(0, PADDING_SMALL), padx=PADDING_MEDIUM)
 
         return sidebar
 
@@ -1297,6 +1322,124 @@ class JarvisApp:
         btn_row = tk.Frame(win, bg=BG_PRIMARY)
         btn_row.pack(fill="x", padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
         RoundedButton(btn_row, text="Refresh Status", command=refresh_dashboard, width=140, height=34, bg=BG_ACCENT).pack(side="left")
+
+    def _show_daily_dashboard(self):
+        """Displays JARVIS v4.0 Digital Chief of Staff Daily Dashboard."""
+        win = tk.Toplevel(self.root)
+        win.title("Daily Dashboard - Digital Chief of Staff")
+        win.geometry("720x600")
+        win.configure(bg=BG_PRIMARY)
+
+        tk.Label(win, text="📋 JARVIS Daily Dashboard", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_HEADING).pack(
+            anchor="w", padx=PADDING_MEDIUM, pady=PADDING_MEDIUM
+        )
+
+        display_box = tk.Text(
+            win,
+            wrap="word",
+            bg=BG_TERTIARY,
+            fg=TEXT_PRIMARY,
+            relief="flat",
+            bd=0,
+            font=FONT_SMALL,
+            padx=PADDING_NORMAL,
+            pady=PADDING_NORMAL,
+        )
+        display_box.pack(fill="both", expand=True, padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
+
+        def refresh_daily_dashboard():
+            display_box.config(state="normal")
+            display_box.delete("1.0", "end")
+
+            # 1. Today's Agenda & Reminders
+            display_box.insert("end", "📅 TODAY'S AGENDA & REMINDERS\n", "header_tag")
+            pending_tasks = self.task_manager.get_pending_tasks()
+            reminders = [t for t in pending_tasks if t.get("due_date")]
+            if reminders:
+                for r in reminders:
+                    display_box.insert("end", f"- [Due: {r.get('due_date')}] {r.get('title')} (Priority: {r.get('priority')})\n")
+            else:
+                display_box.insert("end", "- No upcoming reminders/agenda items for today.\n")
+            display_box.insert("end", "\n")
+
+            # 2. Pending Tasks
+            display_box.insert("end", "☑️ PENDING TASKS\n", "header_tag")
+            if pending_tasks:
+                for t in pending_tasks[:5]:
+                    display_box.insert("end", f"- #{t.get('id')} {t.get('title')} | Priority: {t.get('priority')} | {t.get('completion_pct')}% complete\n")
+                if len(pending_tasks) > 5:
+                    display_box.insert("end", f"... and {len(pending_tasks) - 5} more pending tasks.\n")
+            else:
+                display_box.insert("end", "- No pending tasks.\n")
+            display_box.insert("end", "\n")
+
+            # 3. Projects & Active Project
+            display_box.insert("end", "📂 PROJECTS & ACTIVE PROJECT\n", "header_tag")
+            projects = self.project_manager.list_projects()
+            active_proj = "None"
+            for p in projects:
+                if p.get("status") == "active":
+                    active_proj = p.get("name")
+                    break
+            display_box.insert("end", f"Current Active Project: {active_proj}\n")
+            if projects:
+                for p in projects:
+                    display_box.insert("end", f"- {p.get('name')} | Status: {p.get('status')} | Progress: {p.get('progress')}%\n")
+            else:
+                display_box.insert("end", "- No projects registered.\n")
+            display_box.insert("end", "\n")
+
+            # 4. Recent Conversations
+            display_box.insert("end", "💬 RECENT CONVERSATIONS\n", "header_tag")
+            sessions = self.history_manager.get_sessions()
+            if sessions:
+                for s in reversed(sessions[-3:]):
+                    display_box.insert("end", f"- {s.get('title')} (ID: {s.get('id')})\n")
+            else:
+                display_box.insert("end", "- No recent conversations.\n")
+            display_box.insert("end", "\n")
+
+            # 5. Memory Highlights
+            display_box.insert("end", "🧠 MEMORY HIGHLIGHTS\n", "header_tag")
+            mem_facts = self.memory.get_long_term_memory()
+            if mem_facts:
+                for f in mem_facts[-3:]:
+                    display_box.insert("end", f"- {f.get('fact')} ({', '.join(f.get('tags', []))})\n")
+            else:
+                display_box.insert("end", "- No memory highlights.\n")
+            display_box.insert("end", "\n")
+
+            # 6. System Health & Current Model
+            display_box.insert("end", "🖥️ SYSTEM HEALTH & MODEL\n", "header_tag")
+            health = self.health_manager.check_health()
+            display_box.insert("end", f"Current Model: {self.ai.model_name}\n")
+            display_box.insert("end", f"CPU: {health.get('cpu_percent')}% | RAM: {health.get('memory_percent')}% | VRAM: {health.get('vram_percent')}%\n")
+            display_box.insert("end", f"Ollama Status: {health.get('ollama_status')}\n")
+            display_box.insert("end", "\n")
+
+            # 7. Recent Git Commits
+            display_box.insert("end", "🐙 RECENT GIT COMMITS\n", "header_tag")
+            try:
+                import subprocess
+                res = subprocess.run(["git", "log", "-n", "3", "--oneline"], capture_output=True, text=True, check=True)
+                commits = res.stdout.strip().split("\n")
+                for c in commits:
+                    display_box.insert("end", f"- {c}\n")
+            except Exception:
+                display_box.insert("end", "- Could not retrieve Git commit log.\n")
+            display_box.insert("end", "\n")
+
+            display_box.config(state="disabled")
+
+        # Configure style tags
+        display_box.tag_configure("header_tag", font=("Consolas", 10, "bold"), foreground=TEXT_PRIMARY)
+
+        refresh_daily_dashboard()
+
+        # Add manual reload button
+        btn_row = tk.Frame(win, bg=BG_PRIMARY)
+        btn_row.pack(fill="x", padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
+        RoundedButton(btn_row, text="Refresh Status", command=refresh_daily_dashboard, width=140, height=34, bg=BG_ACCENT).pack(side="left")
 
     def _clear_chat(self, event=None):
         """Clear current chat canvas quickly."""
