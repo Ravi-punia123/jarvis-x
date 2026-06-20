@@ -74,7 +74,7 @@ def test_ui_components():
         root.geometry("400x300")
         
         # Test theme
-        assert ui_theme.BG_PRIMARY == '#1e1e1e', "Theme color mismatch"
+        assert ui_theme.BG_PRIMARY == '#090d16', "Theme color mismatch"
         
         # Test button
         btn = RoundedButton(root, "Test", command=lambda: None)

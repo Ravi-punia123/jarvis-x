@@ -213,25 +213,29 @@ class MessageBubble(tk.Frame):
 
         # Bubble background
         bubble_bg = BUBBLE_USER_BG if is_user else BUBBLE_ASSISTANT_BG
-        bubble_frame = tk.Frame(container, bg=bubble_bg, relief="flat", bd=0)
+        bubble_frame = tk.Frame(container, bg=bubble_bg, relief="flat", bd=0, padx=2, pady=2)
         bubble_frame.pack(side="left" if not is_user else "right", fill="both", expand=True)
+
+        header_bar = tk.Frame(bubble_frame, bg=bubble_bg)
+        header_bar.pack(fill="x", side="top", padx=PADDING_SMALL, pady=(PADDING_SMALL, 0))
 
         if not is_user:
             copy_btn = tk.Button(
-                bubble_frame,
-                text="Copy",
+                header_bar,
+                text="📋 Copy",
                 command=lambda t=text: self._copy_text(t),
                 bg=bubble_bg,
                 fg=TEXT_SECONDARY,
-                activebackground=BG_ACCENT,
+                activebackground=BG_TERTIARY,
                 activeforeground=TEXT_PRIMARY,
                 relief="flat",
                 bd=0,
-                padx=8,
+                padx=6,
                 pady=2,
                 font=FONT_TINY,
+                cursor="hand2"
             )
-            copy_btn.pack(anchor="ne", padx=PADDING_SMALL, pady=(PADDING_SMALL, 0))
+            copy_btn.pack(side="right")
 
         # Text in bubble: switch to monospace block rendering for code/table content.
         has_code_block = "```" in text
@@ -240,36 +244,38 @@ class MessageBubble(tk.Frame):
             content = text.replace("```", "")
             if has_code_block:
                 copy_code_btn = tk.Button(
-                    bubble_frame,
-                    text="Copy Code",
+                    header_bar,
+                    text="📋 Copy Code",
                     command=lambda t=content: self._copy_text(t),
                     bg=bubble_bg,
                     fg=TEXT_SECONDARY,
-                    activebackground=BG_ACCENT,
+                    activebackground=BG_TERTIARY,
                     activeforeground=TEXT_PRIMARY,
                     relief="flat",
                     bd=0,
-                    padx=8,
+                    padx=6,
                     pady=2,
                     font=FONT_TINY,
+                    cursor="hand2"
                 )
-                copy_code_btn.pack(anchor="ne", padx=PADDING_SMALL, pady=(0, PADDING_SMALL))
+                copy_code_btn.pack(side="right", padx=(0, PADDING_SMALL))
 
             text_block = tk.Text(
                 bubble_frame,
-                bg=bubble_bg,
+                bg=BG_PRIMARY if not is_user else bubble_bg,
                 fg=TEXT_PRIMARY,
                 font=FONT_MONOSPACE,
                 wrap="word",
                 relief="flat",
                 bd=0,
-                height=min(14, max(3, content.count("\n") + 1)),
+                height=min(12, max(2, content.count("\n") + 1)),
                 padx=PADDING_MEDIUM,
                 pady=PADDING_NORMAL,
+                insertbackground=TEXT_PRIMARY
             )
             text_block.insert("1.0", content)
             text_block.config(state="disabled")
-            text_block.pack(fill="both", expand=True)
+            text_block.pack(fill="both", expand=True, padx=PADDING_SMALL, pady=PADDING_SMALL)
         else:
             rendered_text = self._render_markdown_like(text)
             text_label = tk.Label(
@@ -278,8 +284,8 @@ class MessageBubble(tk.Frame):
                 bg=bubble_bg,
                 fg=TEXT_PRIMARY,
                 font=FONT_BODY,
-                wraplength=500,
-                justify="left" if not is_user else "right",
+                wraplength=600,
+                justify="left",
                 padx=PADDING_MEDIUM,
                 pady=PADDING_NORMAL,
             )

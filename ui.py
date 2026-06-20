@@ -77,7 +77,7 @@ class JarvisApp:
         self.cancel_requested = False
         self.selected_session_id: Optional[int] = None
         self.current_task_id: Optional[str] = None
-        self.execution_panel_expanded = True
+        self.execution_panel_expanded = False
         self.settings = self.settings_manager.all()
         self.ai.configure(
             model_name=self.settings.get("llm_model"),
@@ -296,33 +296,40 @@ class JarvisApp:
         return sidebar
 
     def _build_header(self, parent):
-        """Build the header with model and status info."""
-        header = tk.Frame(parent, bg=BG_SECONDARY)
+        """Build the header with a professional health diagnostic dashboard."""
+        header = tk.Frame(parent, bg=BG_SECONDARY, height=STATUS_BAR_HEIGHT)
+        header.pack_propagate(False)
 
-        # Model indicator
-        model_label = tk.Label(
+        # Left: Model indicator
+        self.model_status_label = tk.Label(
             header,
             textvariable=self.model_status_var,
             bg=BG_SECONDARY,
             fg=TEXT_SECONDARY,
-            font=FONT_SMALL,
+            font=FONT_SMALL_BOLD,
         )
-        model_label.pack(side="left", padx=PADDING_NORMAL, pady=PADDING_SMALL)
+        self.model_status_label.pack(side="left", padx=PADDING_NORMAL)
 
-        # Separator
-        sep = tk.Frame(header, bg=SEPARATOR_COLOR, width=1)
-        sep.pack(side="left", fill="y", padx=PADDING_NORMAL)
+        # Vertical separator
+        tk.Frame(header, bg=SEPARATOR_COLOR, width=1).pack(side="left", fill="y", padx=PADDING_NORMAL, pady=PADDING_SMALL)
 
-        # Vision status
-        self.vision_status = tk.Label(
-            header,
-            text="👁️ Vision Ready",
-            bg=BG_SECONDARY,
-            fg=STATUS_SUCCESS,
-            font=FONT_SMALL,
-        )
-        self.vision_status.pack(side="left", padx=PADDING_NORMAL, pady=PADDING_SMALL)
+        # Health statuses
+        self.ollama_health_label = tk.Label(header, text="⚫ Ollama", bg=BG_SECONDARY, fg=TEXT_MUTED, font=FONT_TINY)
+        self.ollama_health_label.pack(side="left", padx=PADDING_NORMAL)
 
+        self.vision_health_label = tk.Label(header, text="🟢 Vision", bg=BG_SECONDARY, fg=STATUS_SUCCESS, font=FONT_TINY)
+        self.vision_health_label.pack(side="left", padx=PADDING_NORMAL)
+
+        self.memory_health_label = tk.Label(header, text="🟢 Memory", bg=BG_SECONDARY, fg=STATUS_SUCCESS, font=FONT_TINY)
+        self.memory_health_label.pack(side="left", padx=PADDING_NORMAL)
+
+        self.skills_health_label = tk.Label(header, text="🟢 Skills", bg=BG_SECONDARY, fg=STATUS_SUCCESS, font=FONT_TINY)
+        self.skills_health_label.pack(side="left", padx=PADDING_NORMAL)
+
+        self.voice_health_label = tk.Label(header, text="⚫ Voice", bg=BG_SECONDARY, fg=TEXT_MUTED, font=FONT_TINY)
+        self.voice_health_label.pack(side="left", padx=PADDING_NORMAL)
+
+        # Right: Inference status
         infer_label = tk.Label(
             header,
             textvariable=self.inference_var,
@@ -330,9 +337,35 @@ class JarvisApp:
             fg=TEXT_MUTED,
             font=FONT_SMALL,
         )
-        infer_label.pack(side="right", padx=PADDING_NORMAL, pady=PADDING_SMALL)
+        infer_label.pack(side="right", padx=PADDING_NORMAL)
+
+        # Periodically refresh health status dashboard
+        self.root.after(1000, self._refresh_health_dashboard)
 
         return header
+
+    def _refresh_health_dashboard(self):
+        """Update system health statuses dynamically."""
+        try:
+            # Check Ollama online status
+            if self.ai.is_online():
+                self.ollama_health_label.config(text="🟢 Ollama", fg=STATUS_SUCCESS)
+            else:
+                self.ollama_health_label.config(text="🔴 Ollama", fg=STATUS_ERROR)
+
+            # Check Voice module (PyAudio check)
+            try:
+                import pyaudio
+                self.voice_health_label.config(text="🟢 Voice", fg=STATUS_SUCCESS)
+            except ImportError:
+                self.voice_health_label.config(text="⚫ Voice", fg=TEXT_MUTED)
+
+            # Keep model name accurate
+            self.model_status_var.set(f"Model: {self.ai.model_name}")
+        except Exception:
+            pass
+        # Schedule next check in 10 seconds
+        self.root.after(10000, self._refresh_health_dashboard)
 
     def _build_input_area(self, parent):
         """Build the multimodal input area."""
@@ -344,7 +377,7 @@ class JarvisApp:
 
         self.input_box = tk.Text(
             input_inner,
-            height=4,
+            height=3,
             wrap="word",
             font=FONT_BODY,
             bg=BG_TERTIARY,
@@ -356,7 +389,15 @@ class JarvisApp:
             pady=PADDING_NORMAL,
         )
         self.input_box.pack(fill="both", expand=True)
-        self.input_box.bind("<Control-Return>", self._on_send)
+
+        def _handle_enter(event):
+            # Shift key check
+            if event.state & 0x0001:  # Shift held down
+                return None  # Let default behavior happen (insert newline)
+            self._on_send()
+            return "break"  # Stop enter character insertion
+
+        self.input_box.bind("<Return>", _handle_enter)
         self.input_box.bind("<Control-v>", self._on_paste_clipboard)
         
         # Support drag & drop if available
@@ -473,7 +514,7 @@ class JarvisApp:
 
         self.execution_toggle_btn = RoundedButton(
             header_row,
-            text="Hide",
+            text="Show",
             command=self._toggle_execution_panel,
             width=70,
             height=26,
@@ -498,7 +539,7 @@ class JarvisApp:
             padx=PADDING_NORMAL,
             pady=PADDING_SMALL,
         )
-        self.execution_text.pack(fill="x", padx=PADDING_NORMAL, pady=PADDING_SMALL)
+        # Omit packing self.execution_text so it starts collapsed
         self.execution_text.insert("1.0", "Waiting for next request...")
         self.execution_text.config(state="disabled")
 
@@ -1205,18 +1246,26 @@ class JarvisApp:
         query = self.history_search_var.get().strip().lower() if hasattr(self, "history_search_var") else ""
         if query:
             sessions = [s for s in sessions if query in s.get("title", "").lower()]
-        for session in reversed(sessions[-5:]):
+        
+        # Display up to 15 sessions in reverse order
+        for session in reversed(sessions[-15:]):
             title = session["title"]
-            if session.get("pinned"):
-                title = f"* {title}"
+            is_pinned = session.get("pinned", False)
+            display_title = f"📌 {title}" if is_pinned else f"💬 {title}"
+            
             item_row = tk.Frame(self.history_list_frame, bg=BG_SECONDARY)
             item_row.pack(fill="x", padx=PADDING_SMALL, pady=PADDING_SMALL)
 
+            # Modern clean button with background corresponding to active state
+            is_selected = (self.selected_session_id == session["id"])
+            btn_bg = BG_TERTIARY if is_selected else BG_SECONDARY
+            btn_fg = TEXT_PRIMARY if is_selected else TEXT_SECONDARY
+
             session_btn = tk.Button(
                 item_row,
-                text=title,
-                bg=BG_TERTIARY,
-                fg=TEXT_PRIMARY,
+                text=display_title,
+                bg=btn_bg,
+                fg=btn_fg,
                 font=FONT_SMALL,
                 relief="flat",
                 bd=0,
@@ -1224,30 +1273,37 @@ class JarvisApp:
                 pady=PADDING_SMALL,
                 anchor="w",
                 command=lambda sid=session["id"]: self._load_session(sid),
+                cursor="hand2"
             )
-            session_btn.pack(side="left", fill="x", expand=True)
+            session_btn.pack(fill="x", expand=True)
 
-            tk.Button(item_row, text="Pin", command=lambda sid=session["id"]: self._pin_conversation(sid),
-                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
-            tk.Button(item_row, text="Ren", command=lambda sid=session["id"]: self._rename_conversation(sid),
-                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
-            tk.Button(item_row, text="Del", command=lambda sid=session["id"]: self._delete_conversation(sid),
-                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
-            tk.Button(item_row, text="Exp", command=lambda sid=session["id"]: self._export_conversation(sid),
-                      bg=BG_TERTIARY, fg=TEXT_SECONDARY, relief="flat", bd=0).pack(side="left", padx=2)
+            # Create context menu
+            menu = tk.Menu(self.root, tearoff=0, bg=BG_SECONDARY, fg=TEXT_PRIMARY, activebackground=BG_ACCENT)
+            menu.add_command(label="📌 Pin / Unpin", command=lambda sid=session["id"]: (self._pin_conversation(sid), self._update_history_list()))
+            menu.add_command(label="✏️ Rename", command=lambda sid=session["id"]: (self._rename_conversation(sid), self._update_history_list()))
+            menu.add_command(label="📤 Export JSON", command=lambda sid=session["id"]: self._export_conversation(sid))
+            menu.add_separator()
+            menu.add_command(label="❌ Delete Chat", command=lambda sid=session["id"]: (self._delete_conversation(sid), self._update_history_list()))
+
+            # Binding right-click context menu
+            session_btn.bind("<Button-3>", lambda e, m=menu: m.post(e.x_root, e.y_root))
 
     def _load_session(self, session_id: int):
         """Load a previous session."""
         self.selected_session_id = session_id
         messages = self.history_manager.get_session(session_id)
+        
+        # Clear existing conversation display
+        for widget in self.chat_frame.winfo_children():
+            widget.destroy()
+
         if messages:
-            for widget in self.chat_frame.winfo_children():
-                widget.destroy()
             for msg in messages:
                 if msg["role"] == "user":
                     self._append_user_message(msg["content"])
                 else:
                     self._append_assistant_message(msg["content"])
+        self._update_history_list()
 
     def _rename_conversation(self, session_id: int):
         """Rename selected conversation."""

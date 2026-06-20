@@ -4,53 +4,53 @@
 # COLORS
 # ============================================================================
 
-# Background
-BG_PRIMARY = "#1e1e1e"        # Main background (very dark)
-BG_SECONDARY = "#2d2d2d"      # Secondary background (input area, panels)
-BG_TERTIARY = "#3e3e3e"       # Tertiary (hover, active)
-BG_ACCENT = "#0d7377"         # Accent/highlight (buttons, active)
+# Premium Slate-based Dark Palette
+BG_PRIMARY = "#090d16"          # Deep cosmic background
+BG_SECONDARY = "#111827"        # Cards and sidebars (Slate 900)
+BG_TERTIARY = "#1f2937"         # Inputs, active selections, and borders (Slate 800)
+BG_ACCENT = "#3b82f6"           # Accent blue (Indigo/Blue 500)
 
 # Text
-TEXT_PRIMARY = "#ffffff"      # Main text (white)
-TEXT_SECONDARY = "#b0b0b0"    # Dimmed text (timestamps, secondary info)
-TEXT_MUTED = "#808080"        # Very dim text (placeholders, hints)
+TEXT_PRIMARY = "#f9fafb"        # High-contrast off-white (Gray 50)
+TEXT_SECONDARY = "#9ca3af"      # Dimmed readable text (Gray 400)
+TEXT_MUTED = "#6b7280"          # Placeholders, timestamps, borders (Gray 500)
 
 # Chat bubbles
-BUBBLE_USER_BG = "#0d7377"    # User message background (teal)
-BUBBLE_ASSISTANT_BG = "#2d2d2d"  # Assistant message background (dark)
-BUBBLE_SYSTEM_BG = "#3e2800"  # System message background (orange-brown)
+BUBBLE_USER_BG = "#2563eb"      # Soft royal blue for user messages
+BUBBLE_ASSISTANT_BG = "#1f2937" # Dark slate for assistant responses
+BUBBLE_SYSTEM_BG = "#7c2d12"    # Muted orange/rust for warnings
 
 # Status & indicators
-STATUS_SUCCESS = "#4ade80"    # Green (success, checkmark)
-STATUS_ERROR = "#f87171"      # Red (error, failed)
-STATUS_WARNING = "#facc15"    # Yellow (warning)
-STATUS_THINKING = "#60a5fa"   # Blue (thinking, processing)
-STATUS_LOADING = "#a78bfa"    # Purple (loading, inference)
+STATUS_SUCCESS = "#10b981"      # Emerald green
+STATUS_ERROR = "#ef4444"        # Crimson red
+STATUS_WARNING = "#f59e0b"      # Warm amber
+STATUS_THINKING = "#3b82f6"     # Bright blue
+STATUS_LOADING = "#8b5cf6"      # Soft purple
 
 # UI Elements
-BUTTON_BG = "#0d7377"         # Button background
-BUTTON_HOVER = "#0f9099"      # Button hover (lighter)
-BUTTON_ACTIVE = "#075c63"     # Button active (darker)
+BUTTON_BG = "#2563eb"           # Button base
+BUTTON_HOVER = "#3b82f6"        # Hover highlight
+BUTTON_ACTIVE = "#1d4ed8"       # Active state
 BUTTON_TEXT = TEXT_PRIMARY
 
 SCROLLBAR_BG = BG_SECONDARY
-SCROLLBAR_THUMB = "#555555"
+SCROLLBAR_THUMB = "#4b5563"     # Neutral gray thumb (Gray 600)
 
-BORDER_COLOR = "#444444"
-SEPARATOR_COLOR = "#444444"
+BORDER_COLOR = "#374151"        # Subtle slate borders (Gray 700)
+SEPARATOR_COLOR = "#1f2937"
 
 # ============================================================================
-# FONTS
+# FONTS (Using system font stacks)
 # ============================================================================
 
 FONT_FAMILY = "Segoe UI"
 
 # Font sizes (in points)
-FONT_SIZE_TITLE = 18
-FONT_SIZE_HEADING = 14
-FONT_SIZE_BODY = 11
-FONT_SIZE_SMALL = 10
-FONT_SIZE_TINY = 9
+FONT_SIZE_TITLE = 16
+FONT_SIZE_HEADING = 12
+FONT_SIZE_BODY = 10
+FONT_SIZE_SMALL = 9
+FONT_SIZE_TINY = 8
 
 # Font styles
 FONT_TITLE = (FONT_FAMILY, FONT_SIZE_TITLE, "bold")
@@ -60,43 +60,44 @@ FONT_BODY_BOLD = (FONT_FAMILY, FONT_SIZE_BODY, "bold")
 FONT_SMALL = (FONT_FAMILY, FONT_SIZE_SMALL)
 FONT_SMALL_BOLD = (FONT_FAMILY, FONT_SIZE_SMALL, "bold")
 FONT_TINY = (FONT_FAMILY, FONT_SIZE_TINY)
-FONT_MONOSPACE = ("Consolas", FONT_SIZE_SMALL)
+FONT_MONOSPACE = ("Consolas", FONT_SIZE_BODY)
 
 # ============================================================================
 # DIMENSIONS
 # ============================================================================
 
-# Spacing
-PADDING_SMALL = 4
-PADDING_NORMAL = 8
-PADDING_MEDIUM = 12
-PADDING_LARGE = 16
+# Spacing (highly consistent padding scale)
+PADDING_SMALL = 6
+PADDING_NORMAL = 10
+PADDING_MEDIUM = 14
+PADDING_LARGE = 20
 
 # Sizes
-SIDEBAR_WIDTH = 280
-INPUT_HEIGHT = 100
-STATUS_BAR_HEIGHT = 28
-BUTTON_HEIGHT = 36
-BUTTON_WIDTH = 100
+SIDEBAR_WIDTH = 260
+INPUT_HEIGHT = 85
+STATUS_BAR_HEIGHT = 32
+BUTTON_HEIGHT = 32
+BUTTON_WIDTH = 90
 
-# Border radius (used by canvas/button roundness)
-RADIUS_SMALL = 4
-RADIUS_NORMAL = 8
-RADIUS_LARGE = 12
+# Border radius
+RADIUS_SMALL = 6
+RADIUS_NORMAL = 10
+RADIUS_LARGE = 14
 
 # ============================================================================
 # ANIMATIONS
 # ============================================================================
 
-ANIMATION_DURATION_FAST = 200      # milliseconds
-ANIMATION_DURATION_NORMAL = 300
-ANIMATION_DURATION_SLOW = 500
+ANIMATION_DURATION_FAST = 150      # milliseconds
+ANIMATION_DURATION_NORMAL = 250
+ANIMATION_DURATION_SLOW = 400
 
 # ============================================================================
 # WINDOW
 # ============================================================================
 
 WINDOW_MIN_WIDTH = 900
-WINDOW_MIN_HEIGHT = 600
-WINDOW_DEFAULT_WIDTH = 1200
-WINDOW_DEFAULT_HEIGHT = 800
+WINDOW_MIN_HEIGHT = 650
+WINDOW_DEFAULT_WIDTH = 1150
+WINDOW_DEFAULT_HEIGHT = 750
+
