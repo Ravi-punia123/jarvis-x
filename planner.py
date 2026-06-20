@@ -82,46 +82,71 @@ class Planner:
         lowered = text.lower()
         intent = self._detect_intent(lowered)
 
-        if self._is_screen_analysis_request(lowered):
+        # 1. Vision & Screen Analysis
+        if self._is_screen_analysis_request(lowered) or "analyze" in lowered or "screenshot" in lowered:
+            if "take screenshot" in lowered or lowered == "screenshot":
+                return {
+                    "action": "take_screenshot",
+                    "module": "computer_tools",
+                    "input": text,
+                    "intent": "computer_use",
+                    "reason": "Capture the current desktop screen.",
+                }
             return {
                 "action": "analyze_screen",
                 "module": "vision",
                 "input": request,
                 "intent": "screenshot_analysis",
-                "reason": "The request asks to analyze the current screen.",
+                "reason": "Analyze or describe the current screen state.",
             }
 
+        # 2. File & Folder Operations
         if lowered.startswith("create folder "):
-            return {"action": "create_folder", "path": text[len("create folder ") :].strip()}
+            return {"action": "create_folder", "path": text[len("create folder ") :].strip(), "module": "file_tools", "intent": "file_analysis"}
 
         if lowered.startswith("open folder "):
-            return {"action": "open_folder", "path": text[len("open folder ") :].strip()}
+            return {"action": "open_folder", "path": text[len("open folder ") :].strip(), "module": "file_tools", "intent": "file_analysis"}
 
         if lowered in {"open it", "open that", "open the folder"} and last_folder:
-            return {"action": "open_folder", "path": last_folder}
+            return {"action": "open_folder", "path": last_folder, "module": "file_tools", "intent": "file_analysis"}
 
+        # 3. Developer Workflow (Git & VS Code)
+        if lowered.startswith("git ") or "github" in lowered or "commit" in lowered or "push" in lowered or "pull" in lowered:
+            return self._skill_plan("github", request, "developer_workflow")
+
+        if "vscode" in lowered or "vs code" in lowered or lowered.startswith("find symbol "):
+            return self._skill_plan("vscode", request, "editor_automation")
+
+        # 4. Applications & Commands execution
+        if lowered.startswith("run ") or lowered.startswith("terminal ") or lowered.startswith("execute ") or lowered.startswith("cmd "):
+            clean_cmd = text
+            for prefix in ["run ", "terminal ", "execute ", "cmd "]:
+                if lowered.startswith(prefix):
+                    clean_cmd = text[len(prefix):].strip()
+                    break
+            return self._skill_plan("terminal", clean_cmd, "terminal_automation")
+
+        # 5. Media & Utilities
+        if "youtube" in lowered:
+            return self._skill_plan("youtube", request, "media_automation")
+
+        if lowered.startswith("email") or lowered.startswith("compose") or "mail" in lowered:
+            return self._skill_plan("email", request, "email_automation")
+
+        if "excel" in lowered or "spreadsheet" in lowered or "csv" in lowered:
+            return self._skill_plan("excel", request, "spreadsheet_automation")
+
+        # 6. Web & Browser
+        if lowered.startswith("search ") or "google" in lowered or self._is_browser_request(lowered) or self._matches(lowered, self.browser_keywords):
+            return self._skill_plan("browser", request, "browser_request")
+
+        # 7. Core Computer control actions
         computer_action = self._plan_computer_action(text)
         if computer_action:
             return computer_action
 
-        if lowered.startswith("search "):
-            return self._skill_plan("browser", text, "browser_request")
-
-        if lowered.startswith("open "):
-            target = text[5:].strip()
-            if target in {"it", "that", "the folder"} and last_folder:
-                return {"action": "open_folder", "path": last_folder}
-            if self._looks_like_domain_or_url(target):
-                return self._skill_plan("browser", f"open {target}", "browser_request")
-            return {
-                "action": "open_app",
-                "module": "desktop_tools",
-                "input": text,
-                "intent": "desktop_automation",
-                "reason": "The request appears to require launching an application.",
-            }
-
-        if self._matches(lowered, self.file_keywords):
+        # 8. File system generic keywords
+        if self._matches(lowered, self.file_keywords) or "find" in lowered or "delete" in lowered or "rename" in lowered or "move" in lowered or "copy" in lowered or "paste" in lowered:
             skill_plan = self._skill_plan("filesystem", request, "file_analysis")
             if skill_plan:
                 return skill_plan
@@ -130,46 +155,16 @@ class Planner:
                 "module": "file_tools",
                 "input": request,
                 "intent": "file_analysis",
-                "reason": "The request appears to involve file access.",
+                "reason": "Read, create, or modify filesystem elements.",
             }
 
-        if self._is_browser_request(lowered) or self._matches(lowered, self.browser_keywords):
-            skill_plan = self._skill_plan("browser", request, "browser_request")
-            if skill_plan:
-                return skill_plan
-            return {
-                "action": "browser_request",
-                "module": "browser_tools",
-                "input": request,
-                "intent": "browser_request",
-                "reason": "The request appears to involve web browser actions.",
-            }
-
-        if lowered.startswith("git ") or "github" in lowered:
-            return self._skill_plan("github", request, "developer_workflow")
-
-        if lowered.startswith("run ") or lowered.startswith("terminal "):
-            return self._skill_plan("terminal", request.replace("terminal ", "", 1), "terminal_automation")
-
-        if "vscode" in lowered or lowered.startswith("open folder ") or lowered.startswith("find symbol "):
-            return self._skill_plan("vscode", request, "editor_automation")
-
-        if "youtube" in lowered:
-            return self._skill_plan("youtube", request.replace("youtube", "").strip() or request, "media_automation")
-
-        if lowered.startswith("email") or lowered.startswith("compose"):
-            return self._skill_plan("email", request, "email_automation")
-
-        if "excel" in lowered or "spreadsheet" in lowered:
-            return self._skill_plan("excel", request, "spreadsheet_automation")
-
-        if self._matches(lowered, self.open_app_keywords):
+        if self._matches(lowered, self.open_app_keywords) or "launch" in lowered:
             return {
                 "action": "open_app",
                 "module": "desktop_tools",
                 "input": request,
                 "intent": "desktop_automation",
-                "reason": "The request appears to require launching an application.",
+                "reason": "Launch specified application from desktop.",
             }
 
         return self._chat_plan(request, intent)

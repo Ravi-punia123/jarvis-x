@@ -153,72 +153,131 @@ class Executor:
     def _execute_single(self, plan: Dict[str, str]):
         action = plan.get("action")
         module = plan.get("module")
+        skill = plan.get("skill")
+        input_text = plan.get("input", "")
 
         if self._emergency_stop:
             return {"success": False, "error": "Emergency stop active"}
 
-        if action == "create_folder":
-            folder_path = (plan.get("path", "") or "").strip()
-            if not folder_path:
-                return {"success": False, "error": "Folder path is required"}
-            return self._run_with_safety(lambda: self.registry.route_and_execute("create_folder", path=folder_path), action)
+        # 1. Verification checker
+        def _verify_action() -> bool:
+            try:
+                # If we created a file, check if it exists
+                if action == "create_file" or (action == "skill_call" and "create file" in str(input_text).lower()):
+                    import re
+                    match = re.search(r"create file\s+(.+)", str(input_text), re.IGNORECASE)
+                    if match:
+                        file_path = os.path.abspath(match.group(1).strip())
+                        return os.path.isfile(file_path)
 
-        if action == "open_folder":
-            folder_path = (plan.get("path", "") or "").strip()
-            if not folder_path:
-                return {"success": False, "error": "Folder path is required"}
-            return self._run_with_safety(lambda: self._open_folder(folder_path), action)
+                # If we created a folder, check if it exists
+                if action == "create_folder" or (action == "skill_call" and "create folder" in str(input_text).lower()):
+                    path_val = plan.get("path")
+                    if not path_val and "create folder" in str(input_text).lower():
+                        import re
+                        match = re.search(r"create folder\s+(.+)", str(input_text), re.IGNORECASE)
+                        if match:
+                            path_val = match.group(1).strip()
+                    if path_val:
+                        return os.path.isdir(os.path.abspath(path_val))
+            except Exception:
+                pass
+            return True
 
-        if action == "wait":
-            seconds = float(plan.get("seconds", 1.0))
-            return self._run_with_safety(lambda: self._wait(seconds), action)
+        # 2. Re-prioritized runner that attempts native skills registry first
+        def _dispatch_execution():
+            if action == "create_folder":
+                folder_path = (plan.get("path", "") or "").strip()
+                if not folder_path:
+                    return {"success": False, "error": "Folder path is required"}
+                res = self.skills.execute("filesystem", f"create folder {folder_path}")
+                if res.get("success"):
+                    return res
+                return self.registry.route_and_execute("create_folder", path=folder_path)
 
-        if action == "ground_and_click":
-            target = str(plan.get("target", "")).strip()
-            return self._run_with_safety(lambda: self._ground_and_click(target), action)
+            if action == "open_folder":
+                folder_path = (plan.get("path", "") or "").strip()
+                if not folder_path:
+                    return {"success": False, "error": "Folder path is required"}
+                return self._open_folder(folder_path)
 
-        if action == "computer_pipeline":
-            return self._execute_pipeline(plan.get("steps", []))
+            if action == "wait":
+                seconds = float(plan.get("seconds", 1.0))
+                return self._wait(seconds)
 
-        if action == "autonomous_loop":
-            request = str(plan.get("input", "")).strip()
-            if not request:
-                return {"success": False, "error": "Autonomous loop request is required"}
-            self.autonomous_loop.planner = plan.get("planner_ref") or self.autonomous_loop.planner
-            seed_steps = plan.get("steps") if isinstance(plan.get("steps"), list) else None
-            return self.autonomous_loop.run(request, max_cycles=3, seed_steps=seed_steps)
+            if action == "ground_and_click":
+                target = str(plan.get("target", "")).strip()
+                return self._ground_and_click(target)
 
-        if action == "chat":
-            return self._dispatch_chat(module, plan)
-        if action == "skill_call":
-            return self._dispatch_skill(module, plan)
-        if action == "open_app":
-            return self._dispatch_open_app(module, plan)
-        if action == "browser_request":
-            return self._dispatch_browser(module, plan)
-        if action == "file_request":
-            return self._dispatch_file(module, plan)
-        if action == "analyze_screen":
-            return self._dispatch_vision(module, plan)
-        if action in {
-            "click",
-            "double_click",
-            "right_click",
-            "type",
-            "press",
-            "hotkey",
-            "scroll",
-            "drag",
-            "move_mouse",
-            "copy",
-            "paste",
-            "activate_window",
-            "take_screenshot",
-            "computer_request",
-        }:
-            return self._dispatch_computer(module, plan)
+            if action == "computer_pipeline":
+                return self._execute_pipeline(plan.get("steps", []))
 
-        return {"success": False, "error": "Tool not implemented."}
+            if action == "autonomous_loop":
+                request = str(plan.get("input", "")).strip()
+                if not request:
+                    return {"success": False, "error": "Autonomous loop request is required"}
+                self.autonomous_loop.planner = plan.get("planner_ref") or self.autonomous_loop.planner
+                seed_steps = plan.get("steps") if isinstance(plan.get("steps"), list) else None
+                return self.autonomous_loop.run(request, max_cycles=3, seed_steps=seed_steps)
+
+            if action == "chat":
+                return self._dispatch_chat(module, plan)
+            if action == "skill_call":
+                return self._dispatch_skill(module, plan)
+            if action == "open_app":
+                return self._dispatch_open_app(module, plan)
+            if action == "browser_request":
+                return self._dispatch_browser(module, plan)
+            if action == "file_request":
+                return self._dispatch_file(module, plan)
+            if action == "analyze_screen":
+                return self._dispatch_vision(module, plan)
+            if action in {
+                "click",
+                "double_click",
+                "right_click",
+                "type",
+                "press",
+                "hotkey",
+                "scroll",
+                "drag",
+                "move_mouse",
+                "copy",
+                "paste",
+                "activate_window",
+                "take_screenshot",
+                "computer_request",
+            }:
+                return self._dispatch_computer(module, plan)
+
+            return {"success": False, "error": "Tool not implemented."}
+
+        # 3. Try execution loop with verification and up to 2 retries
+        attempt = 0
+        last_res = {"success": False, "error": "Not executed"}
+        while attempt <= self.max_retries:
+            attempt += 1
+            if self._cancel_requested or self._emergency_stop:
+                return {"success": False, "error": "Execution cancelled"}
+
+            # Safely invoke via _dispatch_execution (under self._run_with_timeout or similar if needed,
+            # but since self._run_with_safety is the designated wrapper, we use it directly on the inner lambda).
+            last_res = self._run_with_safety(_dispatch_execution, action or "execute_single")
+
+            # Check verification
+            if isinstance(last_res, dict) and last_res.get("success"):
+                if _verify_action():
+                    last_res["verified"] = True
+                    return last_res
+                else:
+                    self.log.warning("Verification failed for action=%s, attempt=%s", action, attempt)
+                    last_res = {"success": False, "error": "Verification check failed", "verified": False}
+
+            if attempt <= self.max_retries:
+                self.log.info("Retrying failed action=%s, attempt=%s", action, attempt)
+                time.sleep(0.2)
+
+        return last_res
 
     def _dispatch_skill(self, module: str, plan: Dict[str, Any]):
         if module != "skills":

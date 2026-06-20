@@ -54,10 +54,10 @@ def test_backend_services():
         speech_svc = SpeechManager()
         vision_svc = VisionManager()
         
-        print("✓ All backend services initialized")
+        print("[OK] All backend services initialized")
         return True
     except Exception as e:
-        print(f"✗ Backend init failed: {e}")
+        print(f"[ERR] Backend init failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -97,10 +97,10 @@ def test_ui_components():
         root.after(100, root.destroy)
         root.mainloop()
         
-        print("✓ All UI components functional")
+        print("[OK] All UI components functional")
         return True
     except Exception as e:
-        print(f"✗ UI component test failed: {e}")
+        print(f"[ERR] UI component test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -128,12 +128,12 @@ def test_file_manager():
             files = fm.list_files()
             assert len(files) == 0, "Files not cleared"
             
-            print("✓ File manager functional")
+            print("[OK] File manager functional")
             return True
         finally:
             os.unlink(temp_path)
     except Exception as e:
-        print(f"✗ File manager test failed: {e}")
+        print(f"[ERR] File manager test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -158,10 +158,10 @@ def test_history_manager():
         sessions = hm.get_sessions()
         assert len(sessions) > 0, "Session not created"
         
-        print("✓ History manager functional")
+        print("[OK] History manager functional")
         return True
     except Exception as e:
-        print(f"✗ History manager test failed: {e}")
+        print(f"[ERR] History manager test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -180,10 +180,10 @@ def test_memory_persistence():
         history = mem.get_recent_history(limit=10)
         assert len(history) >= 2, "Messages not recorded"
         
-        print("✓ Memory persistence functional")
+        print("[OK] Memory persistence functional")
         return True
     except Exception as e:
-        print(f"✗ Memory persistence test failed: {e}")
+        print(f"[ERR] Memory persistence test failed: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -211,7 +211,7 @@ def run_all_tests():
     total = len(results)
     
     for test_name, result in results:
-        status = "✓ PASS" if result else "✗ FAIL"
+        status = "[PASS]" if result else "[FAIL]"
         print(f"{status}: {test_name}")
     
     print("=" * 60)

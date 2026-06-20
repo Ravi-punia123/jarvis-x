@@ -95,6 +95,51 @@ class JarvisApp:
         # Async Ollama health check
         threading.Thread(target=self._check_ollama_health, daemon=True).start()
 
+        # JARVIS v2.0 Background OS Services
+        from os_observer_service import ContinuousObserver
+        from os_notification_center import OSNotificationCenter
+        from os_coordinator_agent import CoordinatorAgent
+        from os_voice_listener import VoiceWakeListener
+        from os_plugin_registry import DynamicPluginRegistry
+        from os_workflow_engine import WorkflowEngine
+
+        self.notification_center = OSNotificationCenter()
+        self.notification_center.register_listener(self._on_task_event)
+
+        self.continuous_observer = ContinuousObserver(self.memory)
+        self.continuous_observer.start()
+
+        self.coordinator = CoordinatorAgent(self.planner, self.executor)
+        self.plugins = DynamicPluginRegistry()
+        self.workflows = WorkflowEngine(self.executor)
+
+        # Trigger recording when wake word is spoken
+        def voice_trigger(phrase):
+            self.root.after(0, lambda: self._append_user_message(f"[Wake trigger: {phrase}]"))
+            self.root.after(0, self._on_voice)
+
+        self.voice_listener = VoiceWakeListener(self.speech, voice_trigger)
+        self.voice_listener.start()
+
+        # Handle window minimized minimize-to-tray mapping gracefully
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close_attempt)
+
+        # JARVIS v3.0 Self-Improving Platform Modules
+        from os_health_manager import OSHealthManager
+        from os_diagnostics import OSDiagnostics
+        from os_benchmark_suite import OSBenchmarkSuite
+        from os_auto_debugger import OSAutoDebugger
+        from os_learning_engine import OSLearningEngine
+
+        self.health_manager = OSHealthManager()
+        self.diagnostics = OSDiagnostics()
+        self.benchmarks = OSBenchmarkSuite()
+        self.debugger = OSAutoDebugger()
+        self.learning_engine = OSLearningEngine()
+
+        # Track startup metric benchmark
+        self.benchmarks.record("startup_latency", time.time() - self.root.winfo_toplevel().tk.call("clock", "clicks"))
+
     def _on_task_event(self, event_name: str, payload: dict):
         """Handle task queue events on the UI thread."""
         def apply_event():
@@ -293,6 +338,17 @@ class JarvisApp:
         )
         memory_btn.pack(side="bottom", pady=(0, PADDING_SMALL), padx=PADDING_MEDIUM)
 
+        dev_dashboard_btn = RoundedButton(
+            sidebar,
+            text="🛠️ Dev Dashboard",
+            command=self._show_dev_dashboard,
+            width=SIDEBAR_WIDTH - 20,
+            height=BUTTON_HEIGHT,
+            bg=BG_TERTIARY,
+            hover_bg=BG_ACCENT,
+        )
+        dev_dashboard_btn.pack(side="bottom", pady=(0, PADDING_SMALL), padx=PADDING_MEDIUM)
+
         return sidebar
 
     def _build_header(self, parent):
@@ -355,7 +411,10 @@ class JarvisApp:
 
             # Check Voice module (PyAudio check)
             try:
-                import pyaudio
+                try:
+                    import pyaudio
+                except ImportError:
+                    import pyaudiowpatch as pyaudio
                 self.voice_health_label.config(text="🟢 Voice", fg=STATUS_SUCCESS)
             except ImportError:
                 self.voice_health_label.config(text="⚫ Voice", fg=TEXT_MUTED)
@@ -821,46 +880,25 @@ class JarvisApp:
         self._finish_request()
 
     def _finish_tool(self, result):
-        """Display tool execution result."""
-        if isinstance(result, dict) and isinstance(result.get("cycles"), list):
-            summary = []
-            for cycle in result["cycles"]:
-                marker = "✓" if cycle.get("verified") else "✗"
-                line = f"{marker} Cycle {cycle.get('cycle')}: verified={cycle.get('verified')}"
-                self._append_assistant_message(line)
-                summary.append(line)
-            final_msg = result.get("message", "Autonomous workflow complete.") if result.get("success") else result.get("error", "Autonomous workflow failed.")
-            self._append_assistant_message(final_msg)
-            summary.append(final_msg)
-            self.history_manager.add_message("assistant", "\n".join(summary))
-            self._update_execution_log(result.get("message") or result.get("error") or "Autonomous loop complete")
-            self._finish_request()
-            return
+        """Display tool execution result, and call LLM to generate conversation summary of actions taken."""
+        self.status_var.set(STATUS_THINKING)
+        self.execution_var.set("Execution: summarization")
+        self._update_execution_log("[chat] Generating final response summary")
 
-        if isinstance(result, dict) and isinstance(result.get("steps"), list):
-            total = max(len(result["steps"]), 1)
-            summary = []
-            for idx, step in enumerate(result["steps"], start=1):
-                symbol = "✓" if step.get("success") else "✗"
-                pct = int((idx / total) * 100)
-                msg = f"{symbol} [{pct}%] {step.get('message', 'Done')}"
-                self._append_assistant_message(msg)
-                summary.append(msg)
-                self._update_execution_log(msg)
-            self.history_manager.add_message("assistant", "\n".join(summary))
-        else:
-            message = (
-                result.get("message")
-                if isinstance(result, dict) and result.get("success")
-                else (result.get("error") if isinstance(result, dict) else str(result))
-            )
-            text_to_save = message or "Done."
-            self._append_assistant_message(text_to_save)
-            self.history_manager.add_message("assistant", text_to_save)
-            self._update_execution_log(text_to_save)
-            if self.settings.get("auto_speak") and (message or "").strip():
-                threading.Thread(target=self.speech.speak, args=(message,), daemon=True).start()
-        self._finish_request()
+        summary_input = f"System execute actions outcome: {json.dumps(result, ensure_ascii=False)}. Summarize what was accomplished and state the results clearly for the user."
+        
+        self._assistant_buffer = ""
+        self._streaming = True
+        self.cancel_requested = False
+        try:
+            for chunk in self.ai.stream_response(summary_input, self.memory):
+                if self.cancel_requested:
+                    break
+                self._handle_stream_chunk(chunk)
+            self._finish_stream()
+        except Exception as e:
+            self._show_exception(e, "ai", "stream_response_summary")
+            self._finish_stream()
 
     def _finish_request(self):
         """Clean up after request."""
@@ -1196,6 +1234,70 @@ class JarvisApp:
         RoundedButton(button_row, text="Export", command=export_memory, width=120, height=34, bg=BG_ACCENT).pack(side="left", padx=PADDING_SMALL)
         RoundedButton(button_row, text="Summarize", command=summarize_memory, width=120, height=34, bg=BG_TERTIARY).pack(side="left", padx=PADDING_SMALL)
 
+    def _show_dev_dashboard(self):
+        """Displays real-time hardware status metrics, benchmarks history, and diagnostics reports."""
+        win = tk.Toplevel(self.root)
+        win.title("Developer Dashboard")
+        win.geometry("640x520")
+        win.configure(bg=BG_PRIMARY)
+
+        tk.Label(win, text="🛠️ System Health & Performance benchmarks", bg=BG_PRIMARY, fg=TEXT_PRIMARY, font=FONT_HEADING).pack(
+            anchor="w", padx=PADDING_MEDIUM, pady=PADDING_MEDIUM
+        )
+
+        display_box = tk.Text(
+            win,
+            wrap="word",
+            bg=BG_TERTIARY,
+            fg=TEXT_PRIMARY,
+            relief="flat",
+            bd=0,
+            font=FONT_SMALL,
+            padx=PADDING_NORMAL,
+            pady=PADDING_NORMAL,
+        )
+        display_box.pack(fill="both", expand=True, padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
+
+        def refresh_dashboard():
+            display_box.config(state="normal")
+            display_box.delete("1.0", "end")
+            
+            # Fetch diagnostic status
+            diags = self.diagnostics.run_diagnostics()
+            health = self.health_manager.check_health()
+            avg_benchmarks = self.benchmarks.get_averages()
+
+            display_box.insert("end", "[SYSTEM HEALTH MONITOR]\n")
+            display_box.insert("end", f"- Host Status: {health.get('status')}\n")
+            display_box.insert("end", f"- CPU usage: {health.get('cpu_percent')}%\n")
+            display_box.insert("end", f"- RAM usage: {health.get('memory_percent')}%\n")
+            display_box.insert("end", f"- VRAM usage: {health.get('vram_percent')}%\n")
+            display_box.insert("end", f"- Ollama state: {health.get('ollama_status')}\n")
+            display_box.insert("end", f"- Available Local models: {health.get('available_models')}\n\n")
+
+            display_box.insert("end", "[PERFORMANCE BENCHMARKS - LATENCY AVERAGES]\n")
+            for metric, avg in avg_benchmarks.items():
+                display_box.insert("end", f"- {metric}: {avg:.3f} seconds\n")
+            display_box.insert("end", "\n")
+
+            display_box.insert("end", "[DIAGNOSTICS CHECKS]\n")
+            display_box.insert("end", f"- Process RSS RAM: {diags.get('rss_mb')} MB\n")
+            if diags.get("success"):
+                display_box.insert("end", "- All diagnostic parameters clean.\n")
+            else:
+                display_box.insert("end", "- Detected anomalies:\n")
+                for issue in diags.get("issues", []):
+                    display_box.insert("end", f"  * {issue}\n")
+
+            display_box.config(state="disabled")
+
+        refresh_dashboard()
+
+        # Add manual reload button
+        btn_row = tk.Frame(win, bg=BG_PRIMARY)
+        btn_row.pack(fill="x", padx=PADDING_MEDIUM, pady=(0, PADDING_MEDIUM))
+        RoundedButton(btn_row, text="Refresh Status", command=refresh_dashboard, width=140, height=34, bg=BG_ACCENT).pack(side="left")
+
     def _clear_chat(self, event=None):
         """Clear current chat canvas quickly."""
         for widget in self.chat_frame.winfo_children():
@@ -1442,17 +1544,35 @@ class JarvisApp:
             self._update_execution_log(f"[health] Error: {e}")
 
     def _show_exception(self, e: Exception, module: str, function: str):
-        """Log error traceback and append a formatted user-friendly message to assistant bubbles."""
-        tb = traceback.format_exc()
-        self.log.error("Exception in module=%s, function=%s: %s\n%s", module, function, str(e), tb)
+        """Log error traceback, diagnose with AutoDebugger, and append formatted message."""
+        diag = self.debugger.debug_exception(e, f"{module}.{function}")
+        tb = diag.get("traceback", traceback.format_exc())
+        
+        recovery_status = ""
+        if diag.get("recovery_attempted"):
+            status_text = "Success" if diag.get("recovery_success") else "Failed"
+            recovery_status = f"- **Auto-Recovery Attempt**: {status_text} (Action: `{diag.get('suggested_action')}`)\n"
+
         error_msg = (
             f"⚠️ **Error in JARVIS**\n\n"
             f"- **Module**: `{module}`\n"
             f"- **Function**: `{function}`\n"
-            f"- **Details**: {str(e)}\n\n"
+            f"- **Details**: {diag.get('exception_message', str(e))}\n"
+            f"- **Probable Cause**: {diag.get('probable_cause')}\n"
+            f"- **Suggested Action**: {diag.get('suggested_action')}\n"
+            f"{recovery_status}\n"
             f"**Traceback**:\n```\n{tb}```"
         )
         self.root.after(0, lambda: self._append_assistant_message(error_msg))
+
+    def _on_close_attempt(self):
+        """Stop background threads clean and exit."""
+        try:
+            self.continuous_observer.stop()
+            self.voice_listener.stop()
+        except Exception:
+            pass
+        self.root.destroy()
 
     # =========================================================================
     # APP LIFECYCLE

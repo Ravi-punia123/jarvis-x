@@ -7,3 +7,4 @@ pyautogui
 PyGetWindow
 pyperclip
 pytesseract
+psutil

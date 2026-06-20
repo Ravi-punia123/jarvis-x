@@ -130,6 +130,11 @@ class MemoryManager:
                 "projects": [],
                 "preferences": {},
                 "conversation_summaries": [],
+                "pinned_memories": [],
+                "people": [],
+                "companies": [],
+                "repositories": [],
+                "habits": [],
             }
         )
 
@@ -208,6 +213,12 @@ class MemoryManager:
             corpus.append({"type": "goal", "text": str(goal.get("title", "")), "item": goal})
         for summary in payload["conversation_summaries"]:
             corpus.append({"type": "summary", "text": str(summary.get("summary", "")), "item": summary})
+        for pinned in payload.get("pinned_memories", []):
+            corpus.append({"type": "pinned", "text": str(pinned.get("text", "")), "item": pinned})
+        for repo in payload.get("repositories", []):
+            corpus.append({"type": "repository", "text": str(repo.get("name", "")), "item": repo})
+        for habit in payload.get("habits", []):
+            corpus.append({"type": "habit", "text": str(habit.get("description", "")), "item": habit})
 
         scored: List[Dict[str, Any]] = []
         for entry in corpus:
@@ -322,6 +333,11 @@ class MemoryManager:
         payload["goals"] = payload.get("goals", [])[-self.long_term_limit:]
         payload["projects"] = payload.get("projects", [])[-self.long_term_limit:]
         payload["conversation_summaries"] = payload.get("conversation_summaries", [])[-self.long_term_limit:]
+        payload["pinned_memories"] = payload.get("pinned_memories", [])[-self.long_term_limit:]
+        payload["people"] = payload.get("people", [])[-self.long_term_limit:]
+        payload["companies"] = payload.get("companies", [])[-self.long_term_limit:]
+        payload["repositories"] = payload.get("repositories", [])[-self.long_term_limit:]
+        payload["habits"] = payload.get("habits", [])[-self.long_term_limit:]
         if not isinstance(payload.get("preferences", {}), dict):
             payload["preferences"] = {}
 
@@ -341,6 +357,11 @@ class MemoryManager:
             "projects": [],
             "preferences": {},
             "conversation_summaries": [],
+            "pinned_memories": [],
+            "people": [],
+            "companies": [],
+            "repositories": [],
+            "habits": [],
         }
         if self.file_path.exists():
             try:
@@ -375,6 +396,11 @@ class MemoryManager:
         projects = data.get("projects", []) if isinstance(data.get("projects", []), list) else []
         preferences = data.get("preferences", {}) if isinstance(data.get("preferences", {}), dict) else {}
         conversation_summaries = data.get("conversation_summaries", []) if isinstance(data.get("conversation_summaries", []), list) else []
+        pinned_memories = data.get("pinned_memories", []) if isinstance(data.get("pinned_memories", []), list) else []
+        people = data.get("people", []) if isinstance(data.get("people", []), list) else []
+        companies = data.get("companies", []) if isinstance(data.get("companies", []), list) else []
+        repositories = data.get("repositories", []) if isinstance(data.get("repositories", []), list) else []
+        habits = data.get("habits", []) if isinstance(data.get("habits", []), list) else []
 
         payload = {
             "messages": messages,
@@ -391,6 +417,11 @@ class MemoryManager:
             "projects": projects,
             "preferences": preferences,
             "conversation_summaries": conversation_summaries,
+            "pinned_memories": pinned_memories,
+            "people": people,
+            "companies": companies,
+            "repositories": repositories,
+            "habits": habits,
         }
         self._cleanup_payload(payload)
         return payload
