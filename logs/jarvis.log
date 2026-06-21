@@ -840,3 +840,180 @@ ollama._types.ResponseError: llama-server process has terminated: exit status 0x
 2026-06-20 13:41:41,497 | INFO | jarvis.reasoner | reasoned request='git status' goals=1
 2026-06-20 13:41:41,497 | INFO | jarvis.planner | planning request='create file notes.txt'
 2026-06-20 13:41:41,497 | INFO | jarvis.reasoner | reasoned request='create file notes.txt' goals=1
+2026-06-20 13:50:25,792 | INFO | jarvis.main | Starting JARVIS application startup checks
+2026-06-20 13:50:26,241 | WARNING | jarvis.main | Required package 'PyAudio' (module 'pyaudio') is missing.
+2026-06-20 13:50:26,424 | INFO | jarvis.main | Attempting to auto-install missing packages individually: ['PyAudio']
+2026-06-20 13:50:26,424 | INFO | jarvis.main | Installing package 'PyAudio'...
+2026-06-20 13:50:36,639 | ERROR | jarvis.main | Failed to install 'PyAudio'. Error output:
+  error: subprocess-exited-with-error
+  
+  Building wheel for PyAudio (pyproject.toml) did not run successfully.
+  exit code: 1
+  
+  [29 lines of output]
+  WARNING:root:Warning: VCPKG_PATH envrionment variable not set.
+  C:\Users\ravip\AppData\Local\Temp\pip-build-env-3uz8qnb5\overlay\Lib\site-packages\setuptools\dist.py:765: SetuptoolsDeprecationWarning: License classifiers are deprecated.
+  !!
+  
+          ********************************************************************************
+          Please consider removing the following classifiers in favor of a SPDX license expression:
+  
+          License :: OSI Approved :: MIT License
+  
+          See https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#license for details.
+          ********************************************************************************
+  
+  !!
+    self._finalize_license_expression()
+  INFO:root:running bdist_wheel
+  INFO:root:running build
+  INFO:root:running build_py
+  INFO:root:creating build\lib.win-amd64-cpython-314\pyaudio
+  INFO:root:copying src\pyaudio\__init__.py -> build\lib.win-amd64-cpython-314\pyaudio
+  INFO:root:running build_ext
+  INFO:root:building 'pyaudio._portaudio' extension
+  INFO:root:creating build\temp.win-amd64-cpython-314\Release\src\pyaudio
+  INFO:root:"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\bin\HostX86\x64\cl.exe" /c /nologo /O2 /W3 /GL /DNDEBUG /MD -DMS_WIN64=1 -IC:\Users\ravip\AppData\Local\Python\pythoncore-3.14-64\include -IC:\Users\ravip\AppData\Local\Python\pythoncore-3.14-64\Include "-IC:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\include" "-IC:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\VS\include" "-IC:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\ucrt" "-IC:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\um" "-IC:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\shared" "-IC:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\winrt" "-IC:\Program Files (x86)\Windows Kits\10\\include\10.0.26100.0\\cppwinrt" /Tcsrc/pyaudio/device_api.c /Fobuild\temp.win-amd64-cpython-314\Release\src\pyaudio\device_api.obj /MT
+  cl : Command line warning D9025 : overriding '/MD' with '/MT'
+  device_api.c
+  C:\Users\ravip\AppData\Local\Python\pythoncore-3.14-64\include\pyconfig.h(143): warning C4005: 'MS_WIN64': macro redefinition
+  C:\Users\ravip\AppData\Local\Python\pythoncore-3.14-64\include\pyconfig.h(143): note: 'MS_WIN64' previously declared on the command line
+  src/pyaudio/device_api.c(9): fatal error C1083: Cannot open include file: 'portaudio.h': No such file or directory
+  error: command 'C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX86\\x64\\cl.exe' failed with exit code 2
+  [end of output]
+  
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for PyAudio
+error: failed-wheel-build-for-install
+
+Failed to build installable wheels for some pyproject.toml based projects
+
+PyAudio
+
+2026-06-20 13:50:36,640 | WARNING | jarvis.main | PyAudio installation failed. Voice Input will be disabled. To resolve this, please install Microsoft C++ Build Tools from https://visualstudio.microsoft.com/visual-cpp-build-tools/ and try again.
+2026-06-20 13:50:38,104 | INFO | jarvis.os_observer | Continuous OS Awareness Observer Service started
+2026-06-20 13:50:38,110 | INFO | jarvis.os_voice | Voice wake listener daemon started
+2026-06-20 13:50:38,118 | CRITICAL | jarvis.main | Failed to launch JARVIS application: name 'time' is not defined
+Traceback (most recent call last):
+  File "C:\Users\ravip\Desktop\Jarvis\main.py", line 74, in <module>
+    app = JarvisApp()
+  File "C:\Users\ravip\Desktop\Jarvis\ui.py", line 141, in __init__
+    self.benchmarks.record("startup_latency", time.time() - self.root.winfo_toplevel().tk.call("clock", "clicks"))
+                                              ^^^^
+NameError: name 'time' is not defined. Did you forget to import 'time'?
+2026-06-20 13:51:15,258 | INFO | jarvis.executor | action=analyze_screen success attempt=1
+2026-06-20 13:51:15,283 | INFO | jarvis.executor | action=create_folder success attempt=1
+2026-06-20 13:51:15,303 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-20 13:51:15,312 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-20 13:51:15,332 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-20 13:51:15,342 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-20 13:51:15,388 | INFO | jarvis.planner | planning request='search what is python'
+2026-06-20 13:51:15,388 | INFO | jarvis.reasoner | reasoned request='search what is python' goals=1
+2026-06-20 13:51:15,389 | INFO | jarvis.planner | planning request='open notepad'
+2026-06-20 13:51:15,389 | INFO | jarvis.reasoner | reasoned request='open notepad' goals=1
+2026-06-20 13:51:15,389 | INFO | jarvis.planner | planning request='create folder tmp_test then open it'
+2026-06-20 13:51:15,389 | INFO | jarvis.reasoner | reasoned request='create folder tmp_test then open it' goals=2
+2026-06-20 13:51:15,389 | INFO | jarvis.planner | planning request='what is on my screen'
+2026-06-20 13:51:15,389 | INFO | jarvis.reasoner | reasoned request='what is on my screen' goals=1
+2026-06-20 13:51:15,484 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-20 13:51:15,493 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-20 13:51:15,755 | INFO | jarvis.planner | planning request='click 100 200'
+2026-06-20 13:51:15,755 | INFO | jarvis.reasoner | reasoned request='click 100 200' goals=1
+2026-06-20 13:51:15,755 | INFO | jarvis.planner | planning request='Open Chrome, search OpenAI, click first result'
+2026-06-20 13:51:15,755 | INFO | jarvis.reasoner | reasoned request='Open Chrome, search OpenAI, click first result' goals=3
+2026-06-20 13:51:15,781 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-20 13:51:15,791 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-20 13:51:15,791 | INFO | jarvis.reasoner | reasoned request='search python docs' goals=1
+2026-06-20 13:51:15,829 | INFO | jarvis.planner | planning request='search best python testing practices'
+2026-06-20 13:51:15,829 | INFO | jarvis.reasoner | reasoned request='search best python testing practices' goals=1
+2026-06-20 13:51:15,829 | INFO | jarvis.planner | planning request='git status'
+2026-06-20 13:51:15,829 | INFO | jarvis.reasoner | reasoned request='git status' goals=1
+2026-06-20 13:51:15,829 | INFO | jarvis.planner | planning request='create file notes.txt'
+2026-06-20 13:51:15,829 | INFO | jarvis.reasoner | reasoned request='create file notes.txt' goals=1
+2026-06-20 13:53:33,532 | INFO | jarvis.executor | action=analyze_screen success attempt=1
+2026-06-20 13:53:33,556 | INFO | jarvis.executor | action=create_folder success attempt=1
+2026-06-20 13:53:33,576 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-20 13:53:33,585 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-20 13:53:33,604 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-20 13:53:33,615 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-20 13:53:33,661 | INFO | jarvis.planner | planning request='search what is python'
+2026-06-20 13:53:33,662 | INFO | jarvis.reasoner | reasoned request='search what is python' goals=1
+2026-06-20 13:53:33,662 | INFO | jarvis.planner | planning request='open notepad'
+2026-06-20 13:53:33,662 | INFO | jarvis.reasoner | reasoned request='open notepad' goals=1
+2026-06-20 13:53:33,662 | INFO | jarvis.planner | planning request='create folder tmp_test then open it'
+2026-06-20 13:53:33,662 | INFO | jarvis.reasoner | reasoned request='create folder tmp_test then open it' goals=2
+2026-06-20 13:53:33,662 | INFO | jarvis.planner | planning request='what is on my screen'
+2026-06-20 13:53:33,662 | INFO | jarvis.reasoner | reasoned request='what is on my screen' goals=1
+2026-06-20 13:53:33,772 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-20 13:53:33,784 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-20 13:53:34,045 | INFO | jarvis.planner | planning request='click 100 200'
+2026-06-20 13:53:34,045 | INFO | jarvis.reasoner | reasoned request='click 100 200' goals=1
+2026-06-20 13:53:34,045 | INFO | jarvis.planner | planning request='Open Chrome, search OpenAI, click first result'
+2026-06-20 13:53:34,045 | INFO | jarvis.reasoner | reasoned request='Open Chrome, search OpenAI, click first result' goals=3
+2026-06-20 13:53:34,066 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-20 13:53:34,076 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-20 13:53:34,076 | INFO | jarvis.reasoner | reasoned request='search python docs' goals=1
+2026-06-20 13:53:34,112 | INFO | jarvis.planner | planning request='search best python testing practices'
+2026-06-20 13:53:34,112 | INFO | jarvis.reasoner | reasoned request='search best python testing practices' goals=1
+2026-06-20 13:53:34,112 | INFO | jarvis.planner | planning request='git status'
+2026-06-20 13:53:34,112 | INFO | jarvis.reasoner | reasoned request='git status' goals=1
+2026-06-20 13:53:34,112 | INFO | jarvis.planner | planning request='create file notes.txt'
+2026-06-20 13:53:34,112 | INFO | jarvis.reasoner | reasoned request='create file notes.txt' goals=1
+2026-06-21 08:41:26,115 | INFO | jarvis.executor | action=analyze_screen success attempt=1
+2026-06-21 08:41:26,144 | INFO | jarvis.executor | action=create_folder success attempt=1
+2026-06-21 08:41:26,192 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-21 08:41:26,202 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-21 08:41:26,220 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-21 08:41:26,231 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-21 08:41:26,284 | INFO | jarvis.planner | planning request='search what is python'
+2026-06-21 08:41:26,284 | INFO | jarvis.reasoner | reasoned request='search what is python' goals=1
+2026-06-21 08:41:26,285 | INFO | jarvis.planner | planning request='open notepad'
+2026-06-21 08:41:26,285 | INFO | jarvis.reasoner | reasoned request='open notepad' goals=1
+2026-06-21 08:41:26,285 | INFO | jarvis.planner | planning request='create folder tmp_test then open it'
+2026-06-21 08:41:26,285 | INFO | jarvis.reasoner | reasoned request='create folder tmp_test then open it' goals=2
+2026-06-21 08:41:26,285 | INFO | jarvis.planner | planning request='what is on my screen'
+2026-06-21 08:41:26,285 | INFO | jarvis.reasoner | reasoned request='what is on my screen' goals=1
+2026-06-21 08:41:26,400 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-21 08:41:26,410 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-21 08:41:26,672 | INFO | jarvis.planner | planning request='click 100 200'
+2026-06-21 08:41:26,672 | INFO | jarvis.reasoner | reasoned request='click 100 200' goals=1
+2026-06-21 08:41:26,673 | INFO | jarvis.planner | planning request='Open Chrome, search OpenAI, click first result'
+2026-06-21 08:41:26,673 | INFO | jarvis.reasoner | reasoned request='Open Chrome, search OpenAI, click first result' goals=3
+2026-06-21 08:41:26,711 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-21 08:41:26,721 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-21 08:41:26,721 | INFO | jarvis.reasoner | reasoned request='search python docs' goals=1
+2026-06-21 08:41:26,756 | INFO | jarvis.planner | planning request='search best python testing practices'
+2026-06-21 08:41:26,757 | INFO | jarvis.reasoner | reasoned request='search best python testing practices' goals=1
+2026-06-21 08:41:26,757 | INFO | jarvis.planner | planning request='git status'
+2026-06-21 08:41:26,757 | INFO | jarvis.reasoner | reasoned request='git status' goals=1
+2026-06-21 08:41:26,757 | INFO | jarvis.planner | planning request='create file notes.txt'
+2026-06-21 08:41:26,757 | INFO | jarvis.reasoner | reasoned request='create file notes.txt' goals=1
+2026-06-21 09:05:38,198 | INFO | jarvis.executor | action=analyze_screen success attempt=1
+2026-06-21 09:05:38,243 | INFO | jarvis.executor | action=create_folder success attempt=1
+2026-06-21 09:05:38,278 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-21 09:05:38,288 | INFO | jarvis.executor | action=open_app success attempt=1
+2026-06-21 09:05:38,308 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-21 09:05:38,318 | INFO | jarvis.executor | action=browser_request success attempt=1
+2026-06-21 09:05:38,379 | INFO | jarvis.planner | planning request='search what is python'
+2026-06-21 09:05:38,380 | INFO | jarvis.reasoner | reasoned request='search what is python' goals=1
+2026-06-21 09:05:38,380 | INFO | jarvis.planner | planning request='open notepad'
+2026-06-21 09:05:38,380 | INFO | jarvis.reasoner | reasoned request='open notepad' goals=1
+2026-06-21 09:05:38,380 | INFO | jarvis.planner | planning request='create folder tmp_test then open it'
+2026-06-21 09:05:38,380 | INFO | jarvis.reasoner | reasoned request='create folder tmp_test then open it' goals=2
+2026-06-21 09:05:38,380 | INFO | jarvis.planner | planning request='what is on my screen'
+2026-06-21 09:05:38,380 | INFO | jarvis.reasoner | reasoned request='what is on my screen' goals=1
+2026-06-21 09:05:38,497 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-21 09:05:38,507 | INFO | jarvis.executor | action=computer_request success attempt=1
+2026-06-21 09:05:38,782 | INFO | jarvis.planner | planning request='click 100 200'
+2026-06-21 09:05:38,782 | INFO | jarvis.reasoner | reasoned request='click 100 200' goals=1
+2026-06-21 09:05:38,782 | INFO | jarvis.planner | planning request='Open Chrome, search OpenAI, click first result'
+2026-06-21 09:05:38,783 | INFO | jarvis.reasoner | reasoned request='Open Chrome, search OpenAI, click first result' goals=3
+2026-06-21 09:05:38,815 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-21 09:05:38,825 | INFO | jarvis.executor | action=skill_call success attempt=1
+2026-06-21 09:05:38,826 | INFO | jarvis.reasoner | reasoned request='search python docs' goals=1
+2026-06-21 09:05:38,877 | INFO | jarvis.planner | planning request='search best python testing practices'
+2026-06-21 09:05:38,877 | INFO | jarvis.reasoner | reasoned request='search best python testing practices' goals=1
+2026-06-21 09:05:38,877 | INFO | jarvis.planner | planning request='git status'
+2026-06-21 09:05:38,877 | INFO | jarvis.reasoner | reasoned request='git status' goals=1
+2026-06-21 09:05:38,877 | INFO | jarvis.planner | planning request='create file notes.txt'
+2026-06-21 09:05:38,877 | INFO | jarvis.reasoner | reasoned request='create file notes.txt' goals=1

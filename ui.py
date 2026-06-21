@@ -91,6 +91,7 @@ class JarvisApp:
         self._streaming = False
         self._assistant_buffer = ""
         self.cancel_requested = False
+        self._current_streaming_bubble = None
         self.selected_session_id: Optional[int] = None
         self.current_task_id: Optional[str] = None
         self.execution_panel_expanded = False
@@ -922,16 +923,30 @@ class JarvisApp:
         self._assistant_buffer += chunk
         if not self._streaming:
             self._streaming = True
-        # Update the last message or create new one
-        children = self.chat_frame.winfo_children()
-        if children and isinstance(children[-1], MessageBubble):
-            children[-1].destroy()
-        self._append_assistant_message(self._assistant_buffer, is_streaming=True)
+
+        if hasattr(self, "_current_streaming_bubble") and self._current_streaming_bubble and self._current_streaming_bubble.winfo_exists():
+            self._current_streaming_bubble.destroy()
+
+        self._current_streaming_bubble = MessageBubble(
+            self.chat_frame,
+            text=self._assistant_buffer,
+            is_user=False,
+            timestamp="",
+        )
+        self._current_streaming_bubble.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        self.chat_frame.update_idletasks()
 
     def _finish_stream(self):
         """Finish streaming response."""
         self.memory.add_assistant_message(self._assistant_buffer)
         self.history_manager.add_message("assistant", self._assistant_buffer)
+
+        if hasattr(self, "_current_streaming_bubble") and self._current_streaming_bubble and self._current_streaming_bubble.winfo_exists():
+            self._current_streaming_bubble.destroy()
+        self._current_streaming_bubble = None
+
+        self._append_assistant_message(self._assistant_buffer)
+
         if self.settings.get("auto_speak") and self._assistant_buffer.strip():
             threading.Thread(target=self.speech.speak, args=(self._assistant_buffer,), daemon=True).start()
         self._streaming = False
@@ -969,6 +984,9 @@ class JarvisApp:
         self.file_manager.clear_files()
         self._refresh_attachments_ui()
         self.status_var.set(STATUS_READY)
+        if hasattr(self, "_current_streaming_bubble") and self._current_streaming_bubble and self._current_streaming_bubble.winfo_exists():
+            self._current_streaming_bubble.destroy()
+        self._current_streaming_bubble = None
 
     def _update_execution_log(self, line: str):
         """Append one line to execution activity panel."""
@@ -1585,11 +1603,14 @@ class JarvisApp:
             widget.destroy()
 
         if messages:
+            self.history_manager.current_session = messages.copy()
             for msg in messages:
                 if msg["role"] == "user":
                     self._append_user_message(msg["content"])
                 else:
                     self._append_assistant_message(msg["content"])
+        else:
+            self.history_manager.current_session = []
         self._update_history_list()
 
     def _rename_conversation(self, session_id: int):

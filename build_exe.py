@@ -14,6 +14,7 @@ if not os.path.exists(pyi_path):
 cmd = [
     pyi_path,
     "--noconsole",
+    "--noconfirm",
     "--name=Jarvis",
     "--clean",
     "--add-data=assets;assets",
