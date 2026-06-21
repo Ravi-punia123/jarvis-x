@@ -11,6 +11,14 @@ import traceback
 import os
 import json
 from pathlib import Path
+import socket
+import sys
+
+from os_tray_icon import OSTrayIcon
+from os_global_hotkey import GlobalHotkeyListener
+from os_floating_launcher import FloatingLauncher
+from os_startup_manager import is_startup_enabled, set_startup
+from os_crash_handler import register_crash_handler
 
 from ai import OllamaAssistant
 from config import (
@@ -46,6 +54,13 @@ class JarvisApp:
     """Modern dark-themed JARVIS desktop assistant with multimodal input."""
 
     def __init__(self):
+        # Register global crash handler
+        register_crash_handler()
+
+        # Single-Instance Protection
+        self._exit_requested = False
+        self._check_single_instance()
+
         self.root = tk.Tk()
         self.root.title(APP_TITLE)
         self.root.geometry(f"{WINDOW_DEFAULT_WIDTH}x{WINDOW_DEFAULT_HEIGHT}")
@@ -91,7 +106,17 @@ class JarvisApp:
         # Build UI
         self._build_ui()
         self._bind_shortcuts()
-        self.history_manager.new_session()
+        # Session restore: open last chat on startup if enabled
+        if self.settings.get("startup_open_last_chat", True):
+            sessions = self.history_manager.get_sessions()
+            if sessions:
+                # Load the latest session
+                last_session_id = sessions[-1]["id"]
+                self._load_session(last_session_id)
+            else:
+                self.history_manager.new_session()
+        else:
+            self.history_manager.new_session()
         
         # Async Ollama health check
         threading.Thread(target=self._check_ollama_health, daemon=True).start()
@@ -153,6 +178,15 @@ class JarvisApp:
 
         # Track startup metric benchmark
         self.benchmarks.record("startup_latency", time.time() - self.root.winfo_toplevel().tk.call("clock", "clicks"))
+
+        # JARVIS native wrappers
+        self.tray_icon = OSTrayIcon(self)
+        self.tray_icon.start()
+
+        self.floating_launcher = FloatingLauncher(self)
+
+        self.hotkey_listener = GlobalHotkeyListener(self._toggle_launcher)
+        self.hotkey_listener.start()
 
     def _on_task_event(self, event_name: str, payload: dict):
         """Handle task queue events on the UI thread."""
@@ -1142,7 +1176,15 @@ class JarvisApp:
                        bg=BG_PRIMARY, fg=TEXT_PRIMARY, selectcolor=BG_TERTIARY,
                        activebackground=BG_PRIMARY, activeforeground=TEXT_PRIMARY).pack(anchor="w")
 
+        row_win_start = tk.Frame(win, bg=BG_PRIMARY)
+        row_win_start.pack(fill="x", padx=PADDING_MEDIUM, pady=PADDING_SMALL)
+        startup_win_var = tk.BooleanVar(value=is_startup_enabled())
+        tk.Checkbutton(row_win_start, text="Start with Windows", variable=startup_win_var,
+                       bg=BG_PRIMARY, fg=TEXT_PRIMARY, selectcolor=BG_TERTIARY,
+                       activebackground=BG_PRIMARY, activeforeground=TEXT_PRIMARY).pack(anchor="w")
+
         def save_settings():
+            set_startup(bool(startup_win_var.get()))
             self.settings["font_scale"] = float(font_scale_var.get())
             self.settings["animations"] = bool(animations_var.get())
             self.settings["auto_speak"] = bool(auto_speak_var.get())
@@ -1673,13 +1715,21 @@ class JarvisApp:
                 self._update_execution_log("[health] Warning: Local Ollama server is offline.")
                 self.root.after(0, lambda: self._show_toast("Ollama is offline. Please make sure Ollama is running.", "error"))
                 return
-            
+
             if not self.ai.check_model_available():
-                self.status_var.set(f"⚠️ Model '{self.ai.model_name}' missing")
-                self._update_execution_log(f"[health] Warning: Configured model '{self.ai.model_name}' not found.")
-                self.root.after(0, lambda: self._show_toast(f"Model '{self.ai.model_name}' not found. Please pull it.", "error"))
-                return
-            
+                self.status_var.set(f"Pulling '{self.ai.model_name}'...")
+                self._update_execution_log(f"[health] Automatically pulling model '{self.ai.model_name}' in the background...")
+                try:
+                    import ollama
+                    self.root.after(0, lambda: self._show_toast(f"Downloading model '{self.ai.model_name}' in background...", "info"))
+                    ollama.pull(self.ai.model_name)
+                    self._update_execution_log(f"[health] Model '{self.ai.model_name}' pulled successfully.")
+                    self.root.after(0, lambda: self._show_toast(f"Model '{self.ai.model_name}' loaded successfully!", "success"))
+                except Exception as pe:
+                    self._update_execution_log(f"[health] Failed to pull model automatically: {pe}")
+                    self.root.after(0, lambda: self._show_toast(f"Could not load model '{self.ai.model_name}': {pe}", "error"))
+                    return
+
             self.status_var.set(STATUS_READY)
             self._update_execution_log("[health] Ollama and model status OK")
         except Exception as e:
@@ -1709,13 +1759,61 @@ class JarvisApp:
         self.root.after(0, lambda: self._append_assistant_message(error_msg))
 
     def _on_close_attempt(self):
-        """Stop background threads clean and exit."""
+        """Handle window close: hide to tray, or stop background threads clean and exit if requested."""
+        if not self._exit_requested:
+            # Minimize to tray
+            self.root.withdraw()
+            self.floating_launcher.show_toast("JARVIS minimized", "JARVIS is running in the background. Access via system tray or Ctrl+Space.")
+            return
+
         try:
             self.continuous_observer.stop()
             self.voice_listener.stop()
+            self.tray_icon.stop()
+            self.hotkey_listener.stop()
         except Exception:
             pass
         self.root.destroy()
+
+    def _show_window_from_tray(self):
+        """Restore main JARVIS UI window."""
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def _toggle_launcher(self):
+        """Toggle global launcher display."""
+        self.root.after(0, self.floating_launcher.show)
+
+    def _check_single_instance(self):
+        """Bind local socket to guarantee single execution instance."""
+        self._instance_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self._instance_socket.bind(("127.0.0.1", 49339))
+            self._instance_socket.listen(1)
+            # Start background thread to listen for trigger messages
+            def listen_loop():
+                while True:
+                    try:
+                        conn, addr = self._instance_socket.accept()
+                        data = conn.recv(1024)
+                        if data == b"show_window":
+                            self.root.after(0, self._show_window_from_tray)
+                        conn.close()
+                    except Exception:
+                        break
+            threading.Thread(target=listen_loop, daemon=True).start()
+        except OSError:
+            # Already running! Send message to show the window.
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect(("127.0.0.1", 49339))
+                s.sendall(b"show_window")
+                s.close()
+            except Exception:
+                pass
+            print("Another instance is already running. Exiting.")
+            sys.exit(0)
 
     # =========================================================================
     # APP LIFECYCLE

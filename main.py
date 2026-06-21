@@ -61,12 +61,47 @@ def _check_and_heal_env(log) -> bool:
         return all_success
     return True
 
+def show_splash():
+    """Display borderless visual loader splash screen."""
+    import tkinter as tk
+    splash = tk.Tk()
+    splash.overrideredirect(True)
+    splash.configure(bg="#0a192f")
+
+    # Center on screen
+    w, h = 420, 240
+    screen_w = splash.winfo_screenwidth()
+    screen_h = splash.winfo_screenheight()
+    x = (screen_w - w) // 2
+    y = (screen_h - h) // 2
+    splash.geometry(f"{w}x{h}+{x}+{y}")
+
+    # Neon blue border
+    b = tk.Frame(splash, bg="#00f2fe", bd=1)
+    b.pack(fill="both", expand=True)
+
+    inner = tk.Frame(b, bg="#0a192f")
+    inner.pack(fill="both", expand=True, padx=2, pady=2)
+
+    # Core elements
+    tk.Label(inner, text="JARVIS", bg="#0a192f", fg="#00f2fe", font=("Consolas", 32, "bold")).pack(pady=(45, 8))
+    tk.Label(inner, text="Digital Chief of Staff", bg="#0a192f", fg="#8892b0", font=("Consolas", 13, "italic")).pack(pady=4)
+    tk.Label(inner, text="v4.0.0", bg="#0a192f", fg="#00f2fe", font=("Consolas", 9)).pack(pady=4)
+    tk.Label(inner, text="Initializing JARVIS desktop core...", bg="#0a192f", fg="#8892b0", font=("Consolas", 8)).pack(side="bottom", pady=25)
+
+    splash.update()
+    return splash
+
+
 if __name__ == "__main__":
     t0 = time.perf_counter()
     log = get_logger("main")
     log.info("Starting JARVIS application startup checks")
     
-    # We check environment but allow non-critical packaging errors (like PyAudio failing wheel build under Python 3.14) to launch.
+    # Launch splash screen
+    splash = show_splash()
+
+    # We check environment but allow non-critical packaging errors
     _check_and_heal_env(log)
         
     try:
@@ -74,7 +109,14 @@ if __name__ == "__main__":
         app = JarvisApp()
         elapsed = time.perf_counter() - t0
         log.info("JARVIS initialized successfully in %.3f seconds", elapsed)
+        
+        # Shutdown splash screen and launch UI
+        splash.destroy()
         app.run()
     except Exception as e:
         log.critical("Failed to launch JARVIS application: %s", e, exc_info=True)
+        try:
+            splash.destroy()
+        except Exception:
+            pass
         sys.exit(1)

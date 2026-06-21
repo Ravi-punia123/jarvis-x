@@ -8,3 +8,7 @@ vision_test.py
 Demo/
 TestFolder/
 hello.txt
+build/
+dist/
+*.spec
+crash_report.log
