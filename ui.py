@@ -955,6 +955,26 @@ class JarvisApp:
 
     def _finish_tool(self, result):
         """Display tool execution result, and call LLM to generate conversation summary of actions taken."""
+        # Check if the tool execution was a model switch!
+        if isinstance(result, dict) and result.get("action") == "switch_model":
+            if result.get("success"):
+                model_name = result.get("model")
+                self.ai.configure(model_name=model_name)
+                self.model_status_var.set(f"Model: {model_name}")
+                self._show_toast(f"✓ Switched to {model_name}", "success")
+                self._append_assistant_message(f"✓ Switched to {model_name}")
+                
+                # Update self.settings and save
+                self.settings["llm_model"] = model_name
+                self.settings_manager.update(self.settings)
+                self.settings_manager.save()
+            else:
+                err = result.get("error", "Failed to switch model")
+                self._append_assistant_message(err)
+                self._show_toast(f"Error: {err}", "error")
+            self._finish_request()
+            return
+
         self.status_var.set(STATUS_THINKING)
         self.execution_var.set("Execution: summarization")
         self._update_execution_log("[chat] Generating final response summary")

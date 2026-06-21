@@ -220,6 +220,14 @@ class Executor:
                 seed_steps = plan.get("steps") if isinstance(plan.get("steps"), list) else None
                 return self.autonomous_loop.run(request, max_cycles=3, seed_steps=seed_steps)
 
+            if action == "switch_model":
+                target_model = plan.get("arguments", {}).get("model", "")
+                if not target_model:
+                    target_model = plan.get("model", "")
+                res = self._switch_model(target_model)
+                res["action"] = "switch_model"
+                return res
+
             if action == "chat":
                 return self._dispatch_chat(module, plan)
             if action == "skill_call":
@@ -523,3 +531,29 @@ class Executor:
         if isinstance(result, dict):
             return result
         return {"success": True, "result": result}
+
+    def _switch_model(self, model_name: str) -> Dict[str, Any]:
+        """Switch the model if it exists locally in ollama."""
+        if not model_name:
+            return {"success": False, "error": "Model name not specified."}
+
+        # Verify using subprocess 'ollama list'
+        if not self._verify_model_installed(model_name):
+            return {"success": False, "error": "Model not installed."}
+
+        # Save to settings
+        self.settings.set("llm_model", model_name)
+        self.settings.save()
+        return {"success": True, "model": model_name, "message": f"✓ Switched to {model_name}"}
+
+    def _verify_model_installed(self, model_name: str) -> bool:
+        """Run 'ollama list' to check if target model is present."""
+        try:
+            import subprocess
+            res = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
+            output = res.stdout.lower()
+            model_lower = model_name.lower()
+            lines = [line.split()[0] for line in output.splitlines() if line.strip() and not line.startswith("name")]
+            return model_lower in lines or any(m.startswith(model_lower + ":") for m in lines)
+        except Exception:
+            return False

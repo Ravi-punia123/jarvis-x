@@ -82,6 +82,38 @@ class Planner:
         lowered = text.lower()
         intent = self._detect_intent(lowered)
 
+        # 0. Model Switching
+        model_switch_keywords = ["switch model", "change model", "use model", "select model", "change ai"]
+        is_model_switch = False
+        target_model = ""
+
+        if any(kw in lowered for kw in model_switch_keywords) or lowered.startswith("use ") or lowered.startswith("switch to "):
+            clean_text = lowered
+            for phrase in ["switch to ", "switch model to ", "change model to ", "use model ", "select model ", "use ", "change ai to "]:
+                if clean_text.startswith(phrase):
+                    clean_text = clean_text[len(phrase):].strip()
+                    is_model_switch = True
+                    break
+            
+            if lowered in ["switch model", "change model", "select model", "change ai"]:
+                is_model_switch = True
+                clean_text = ""
+                
+            if is_model_switch or clean_text in ["qwen3:8b", "gemma4:12b", "llama3", "qwen", "gemma"]:
+                is_model_switch = True
+                target_model = clean_text
+
+        if is_model_switch:
+            return {
+                "action": "switch_model",
+                "arguments": {
+                    "model": target_model
+                },
+                "module": "settings",
+                "intent": "system_control",
+                "reason": f"Switch active LLM model to {target_model if target_model else 'prompt'}"
+            }
+
         # 1. Vision & Screen Analysis
         if self._is_screen_analysis_request(lowered) or "analyze" in lowered or "screenshot" in lowered:
             if "take screenshot" in lowered or lowered == "screenshot":
